@@ -30,13 +30,17 @@ It features a full CET-based in-game UI to calibrate offsets, adjust arm reach, 
 4. Extract the contents of the mod `.zip` file into your main Cyberpunk 2077 game directory.
 5. The folder structure should merge with your `bin/x64/plugins/` (for RED4ext) and `bin/x64/plugins/cyber_engine_tweaks/mods/` (for the CET UI).
 
-## How to Calibrate
-1. Launch the game and load a save where you are in First-Person view.
-2. Open the **Cyber Engine Tweaks (CET)** overlay.
-3. Find the **Cyberpunk Universal Hands** window.
-4. Toggle **Enable Universal Hands**.
-5. Use the sliders to adjust your hand offsets so that the in-game hands align perfectly with your physical controllers.
-6. The settings are automatically saved and will load on your next session!
+## How to Launch & Calibrate
+1. Install the mod following the steps above.
+2. Download and launch **BodyWalkVR**.
+3. In BodyWalkVR, go to the Profiles tab and load the **Cyberpunk** profile.
+4. In the BodyWalkVR **Mapping** tab, ensure your input is set to **OpenXR** (or your preferred tracker).
+5. In the BodyWalkVR **Startup** tab, ensure **Enable Universal Tracking Output** is checked.
+6. Launch Cyberpunk 2077 and load a save where you are in First-Person view.
+7. Open the **Cyber Engine Tweaks (CET)** overlay, find the **Cyberpunk Universal Hands** window, and toggle **Enable Universal Hands**.
+8. **IMPORTANT:** BodyWalkVR acts as a virtual keyboard and gamepad emulator. Make sure the Cyberpunk 2077 game window is completely **in focus** for the inputs to register!
+9. Use the CET sliders to calibrate your hand offsets so they align perfectly with your physical controllers.
+10. Customize your gestures (like jumping or squatting) to your liking in BodyWalkVR. The settings are automatically saved and will load on your next session!
 
 ## For Developers (Open Source)
 This mod exposes its Shared Memory layout and source code, allowing anyone to write custom drivers (e.g. for gloves, external trackers, or custom VR setups) and inject them directly into Cyberpunk's animation graph. 
