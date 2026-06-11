@@ -1,0 +1,66 @@
+[size=6][b]Cyberpunk Universal Hands VR[/b][/size]
+
+[size=5][b]Description[/b][/size]
+[b]Cyberpunk Universal Hands VR[/b] is a powerful, [b]100% free[/b] RED4ext and Cyber Engine Tweaks (CET) plugin that allows seamless external injection of VR hand tracking into Cyberpunk 2077's first-person animations. 
+
+[i]Please note: This project is a completely free and open-source fork based on the original [b]CyberpunkVRPort[/b] by dariulone ([url=https://github.com/dariulone/cyberpunk-vr-port]GitHub[/url]).[/i]
+
+Originally built as a companion to [b]BodyWalkVR[/b], this mod uses a high-performance Shared Memory interface to read VR controller positions and rotations (from OpenXR, SteamVR, or custom tracking solutions) and applies them directly to the in-game player skeleton (VRIK) in real-time.
+
+It features a full CET-based in-game UI to calibrate offsets, adjust arm reach, and persist settings between sessions.
+
+[size=5][b]Key Features[/b][/size]
+[list]
+[*][b]Universal Tracking Support[/b]: Reads any tracking data sent to the [font=Courier New]Local\BodyWalkVR_UniversalTracking[/font] shared memory map. Works with BodyWalkVR, custom scripts, and external VR overlays.
+[*][b]Full VRIK Arm Solver[/b]: Bypasses the game's static arm animations and uses a custom 2-bone Inverse Kinematics (IK) solver to naturally position the shoulder, elbow, and wrist based on your real-life VR controllers.
+[*][b]In-Game Calibration (CET)[/b]: Open the Cyber Engine Tweaks overlay to instantly adjust left and right hand offsets, reach scale, wrist rotation (pitch/yaw/roll), and elbow swing limits.
+[*][b]Persistent Settings[/b]: All your calibration values are automatically saved to [font=Courier New]config.json[/font] and applied every time you launch the game.
+[*][b]Head-Relative Locking[/b]: Prevents hands from swinging wildly when you physically turn your head or when the game forces the camera to look around.
+[/list]
+
+[size=5][b]Requirements[/b][/size]
+[list]
+[*][url=https://www.nexusmods.com/cyberpunk2077/mods/107]Cyber Engine Tweaks (CET)[/url]
+[*][url=https://www.nexusmods.com/cyberpunk2077/mods/2380]RED4ext[/url]
+[*][i]Optional but recommended:[/i] A VR Mod (like the LukeRoss VR mod) to view the hands in VR.
+[*][i]A Tracking Provider:[/i] You need a program (like BodyWalkVR) to write your controller positions to the shared memory map, otherwise the hands will fall back to default animations.
+[/list]
+
+[size=5][b]Installation & Download[/b][/size]
+[list=1]
+[*]Download the [b]BodyWalkVR Tracker App[/b] from [b][url=https://bodywalkvr.com/download]https://bodywalkvr.com/download[/url][/b] (Required for tracking).
+[*]Download the Mod [font=Courier New].zip[/font] file from the [b]Files[/b] tab here on NexusMods.
+[*]Ensure you have [b]CET[/b] and [b]RED4ext[/b] installed and working.
+[*]Extract the contents of the mod [font=Courier New].zip[/font] file into your main Cyberpunk 2077 game directory.
+[*]The folder structure should merge with your [font=Courier New]bin/x64/plugins/[/font] (for RED4ext) and [font=Courier New]bin/x64/plugins/cyber_engine_tweaks/mods/[/font] (for the CET UI).
+[/list]
+
+[size=5][b]🚀 Step-by-Step Startup Guide[/b][/size]
+[i]Because this mod connects external tracking to the game, please follow these exact steps to ensure it works correctly.[/i]
+
+[b]Step 1: Configure BodyWalkVR[/b]
+[list=1]
+[*]Launch [b]BodyWalkVR[/b].
+[*]Go to the [b]Profiles[/b] tab and load the [b]Cyberpunk[/b] profile.
+[*]Go to the [b]Main[/b] tab and make sure [b]Lock HMD position to center[/b] is CHECKED.
+[*]Go to the [b]Mapping[/b] tab and ensure your Tracking Input is set to [b]OpenXR[/b] (or your preferred tracker).
+[*]Go to the [b]Startup[/b] tab and ensure [b]Enable Universal Tracking Output[/b] is CHECKED.
+[/list]
+
+[b]Step 2: Launch Cyberpunk 2077[/b]
+[list=1]
+[*]Launch the game and load a save where you are in First-Person view.
+[*]Open the [b]Cyber Engine Tweaks (CET)[/b] overlay.
+[*]Find the [b]Cyberpunk Universal Hands[/b] window and toggle [b]Enable Universal Hands[/b] to ON.
+[/list]
+
+[b]Step 3: Focus & Calibrate[/b]
+[list=1]
+[*][b]CRITICAL STEP:[/b] BodyWalkVR acts as a virtual keyboard and gamepad emulator. You must click back into the Cyberpunk 2077 game window so it is completely [b]in focus[/b], otherwise the hand tracking will NOT register!
+[*]Use the sliders in the CET overlay to adjust your hand offsets so that the in-game hands align perfectly with your physical controllers.
+[*][i](The calibration settings are automatically saved and will load on your next session!)[/i]
+[/list]
+
+[size=5][b]For Developers (Open Source)[/b][/size]
+This mod exposes its Shared Memory layout and source code, allowing anyone to write custom drivers (e.g. for gloves, external trackers, or custom VR setups) and inject them directly into Cyberpunk's animation graph. 
+Check out the [url=https://github.com/natpoh/cp2077-universal-hands]GitHub repository[/url] for source code and documentation on the memory structure!
