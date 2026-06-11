@@ -49,6 +49,14 @@ local function applyCalibration()
 
     pcall(function() Game.SetVRHandOffset(cfg.pitchL, cfg.yawL, cfg.rollL, 1) end)
     pcall(function() Game.SetVRHandOffset(cfg.pitchR, cfg.yawR, cfg.rollR, 0) end)
+
+    if cfg.enabled then
+        pcall(function() Game.InstallVRAnimPoseHook() end)
+        pcall(function() Game.ArmVRAnimPosePlayer() end)
+        pcall(function() Game.SetVRBindMode(4) end)
+    else
+        pcall(function() Game.SetVRBindMode(0) end)
+    end
 end
 
 registerForEvent("onOverlayOpen", function()
@@ -77,13 +85,7 @@ registerForEvent("onDraw", function()
         local cEnabled, toggled = ImGui.Checkbox("Enable Universal Hands", cfg.enabled)
         if toggled then
             cfg.enabled = cEnabled
-            if cfg.enabled then
-                pcall(function() Game.InstallVRAnimPoseHook() end)
-                pcall(function() Game.ArmVRAnimPosePlayer() end)
-                pcall(function() Game.SetVRBindMode(4) end)
-            else
-                pcall(function() Game.SetVRBindMode(0) end)
-            end
+            changed = true
         end
 
         ImGui.Separator()
