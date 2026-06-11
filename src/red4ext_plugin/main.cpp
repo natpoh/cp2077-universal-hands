@@ -2954,15 +2954,8 @@ void RunIKTargetAddTest(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aF
     auto rightProvider = CreateStaticPositionProvider(rightPos);
     auto orientationProvider = CreateStaticOrientationProvider();
 
-    std::ofstream log(VRDiagPath("ik_target_add_test_log.txt"), std::ios::app);
-    log << "mode=" << mode << " label=" << label << "\n";
-    log << "playerPos=(" << playerPos.X << ", " << playerPos.Y << ", " << playerPos.Z << ", " << playerPos.W << ")\n";
-    log << "leftPos=(" << leftPos.X << ", " << leftPos.Y << ", " << leftPos.Z << ", " << leftPos.W << ") rightPos=("
-        << rightPos.X << ", " << rightPos.Y << ", " << rightPos.Z << ", " << rightPos.W << ")\n";
-
     if (!leftProvider || !rightProvider)
     {
-        log << "providerCreation=failed\n";
         if (aOut) *aOut = -32;
         return;
     }
@@ -3009,12 +3002,6 @@ void RunIKTargetAddTest(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aF
 
     const bool leftQueued = QueuePlayerEvent(static_cast<RED4ext::Handle<RED4ext::red::Event>>(RED4ext::Handle<RED4ext::ent::IKTargetAddEvent>(leftEvt)));
     const bool rightQueued = QueuePlayerEvent(static_cast<RED4ext::Handle<RED4ext::red::Event>>(RED4ext::Handle<RED4ext::ent::IKTargetAddEvent>(rightEvt)));
-
-    log << "leftQueued=" << (leftQueued ? 1 : 0) << " rightQueued=" << (rightQueued ? 1 : 0) << "\n";
-    log << "leftOutRef id=" << leftEvt->outIKTargetRef.id << " part=" << leftEvt->outIKTargetRef.part.ToString() << "\n";
-    log << "rightOutRef id=" << rightEvt->outIKTargetRef.id << " part=" << rightEvt->outIKTargetRef.part.ToString() << "\n";
-    AppendPlayerControllerIKState(log);
-    log << "--------------------------------------------------\n";
 
     if (aOut) *aOut = (leftQueued ? 1 : 0) + (rightQueued ? 1 : 0);
 }

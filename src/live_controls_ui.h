@@ -79,6 +79,24 @@ struct LiveControlsUiState {
     float xrWeaponOffsetX;
     float xrWeaponOffsetY;
     float xrWeaponOffsetZ;
+
+    // VRIK Hand controls
+    int xrHandTracking;
+    float xrHandScaleR;
+    float xrHandScaleL;
+    float xrHandHeightR;
+    float xrHandHeightL;
+    float xrHandSwingR;
+    float xrHandSwingL;
+    float xrHandPoleR;
+    float xrHandPoleL;
+    float xrHandWRp;
+    float xrHandWRy;
+    float xrHandWRr;
+    float xrHandWLp;
+    float xrHandWLy;
+    float xrHandWLr;
+    int xrHandFreezeZ;
 };
 
 extern "C" void GetLiveControlsUiState(LiveControlsUiState* outState);

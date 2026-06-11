@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -561,19 +562,91 @@ bool DrawHudControls(LiveControlsUiState& state) {
     return changed;
 }
 
-// In-headset VR floating-hands controls: tracking on/off, IK calibration, wrist
+    // In-headset VR floating-hands controls: tracking on/off, IK calibration, wrist
 // alignment, and the diagnostic dump -- everything that used to live only in the
 // desktop CET window. Values are published to the RED4ext arm-IK plugin through
 // shared memory (OpenXRManager::SetVRHandCalib). Defaults mirror the plugin's
 // baked calibration so the rig behaves identically before anything is touched.
+
+static bool s_vrikCalibLoaded = false;
+static bool s_vrHandTracking = false;
+static float scaleR = 1.05f, scaleL = 1.06f;   // reach scale (arm straightening)
+static float heightR = 0.23f, heightL = 0.23f; // vertical anchor offset (m)
+static float swingR = 1.0f,  swingL = 1.0f;    // VRArmIK elbow-swing gain
+static float poleR = 0.0f,   poleL = 0.0f;     // elbow pole spin (deg)
+static float wRp = 0.0f, wRy = -90.0f, wRr = 0.0f;     // right wrist euler (deg)
+static float wLp = -180.0f, wLy = -90.0f, wLr = 0.0f;  // left wrist euler (deg)
+
+std::string GetVrikCalibPath() {
+    char path[MAX_PATH];
+    GetModuleFileNameA(GetModuleHandleA("dxgi.dll"), path, MAX_PATH);
+    char* lastSlash = strrchr(path, '\\');
+    if (lastSlash) *(lastSlash + 1) = 0;
+    strcat_s(path, MAX_PATH, "plugins\\cyber_engine_tweaks\\mods\\Cyberpunk_UniversalHands\\vrik_calib.ini");
+    return path;
+}
+
+void SaveVrikCalib() {
+    std::ofstream f(GetVrikCalibPath(), std::ios::trunc);
+    if (!f.is_open()) return;
+    f << "tracking=" << (s_vrHandTracking ? 1 : 0) << "\n";
+    f << "scaleR=" << scaleR << "\n";
+    f << "scaleL=" << scaleL << "\n";
+    f << "heightR=" << heightR << "\n";
+    f << "heightL=" << heightL << "\n";
+    f << "swingR=" << swingR << "\n";
+    f << "swingL=" << swingL << "\n";
+    f << "poleR=" << poleR << "\n";
+    f << "poleL=" << poleL << "\n";
+    f << "wRp=" << wRp << "\n";
+    f << "wRy=" << wRy << "\n";
+    f << "wRr=" << wRr << "\n";
+    f << "wLp=" << wLp << "\n";
+    f << "wLy=" << wLy << "\n";
+    f << "wLr=" << wLr << "\n";
+}
+
+void LoadVrikCalib() {
+    std::ifstream f(GetVrikCalibPath());
+    if (!f.is_open()) return;
+    std::string line;
+    while (std::getline(f, line)) {
+        float val;
+        if (sscanf_s(line.c_str(), "tracking=%f", &val) == 1) s_vrHandTracking = val != 0.0f;
+        else if (sscanf_s(line.c_str(), "scaleR=%f", &val) == 1) scaleR = val;
+        else if (sscanf_s(line.c_str(), "scaleL=%f", &val) == 1) scaleL = val;
+        else if (sscanf_s(line.c_str(), "heightR=%f", &val) == 1) heightR = val;
+        else if (sscanf_s(line.c_str(), "heightL=%f", &val) == 1) heightL = val;
+        else if (sscanf_s(line.c_str(), "swingR=%f", &val) == 1) swingR = val;
+        else if (sscanf_s(line.c_str(), "swingL=%f", &val) == 1) swingL = val;
+        else if (sscanf_s(line.c_str(), "poleR=%f", &val) == 1) poleR = val;
+        else if (sscanf_s(line.c_str(), "poleL=%f", &val) == 1) poleL = val;
+        else if (sscanf_s(line.c_str(), "wRp=%f", &val) == 1) wRp = val;
+        else if (sscanf_s(line.c_str(), "wRy=%f", &val) == 1) wRy = val;
+        else if (sscanf_s(line.c_str(), "wRr=%f", &val) == 1) wRr = val;
+        else if (sscanf_s(line.c_str(), "wLp=%f", &val) == 1) wLp = val;
+        else if (sscanf_s(line.c_str(), "wLy=%f", &val) == 1) wLy = val;
+        else if (sscanf_s(line.c_str(), "wLr=%f", &val) == 1) wLr = val;
+    }
+}
+
 void DrawVRHandsControls() {
+    if (!s_vrikCalibLoaded) {
+        LoadVrikCalib();
+        OpenXRManager::Get().SetVRHandTrackingMode(s_vrHandTracking ? 4 : 0);
+        OpenXRManager::Get().SetVRHandCalib(scaleR, scaleL, heightR, heightL,
+                                            swingR, swingL, poleR, poleL,
+                                            wRp, wRy, wRr, wLp, wLy, wLr);
+        s_vrikCalibLoaded = true;
+    }
+
     // Tracking toggle (writes shared-mem slot [32]; plugin installs hooks + arms
     // and sets g_VRBind = this value). Must be 4 = full-arm IK (the mode the CET
     // "Start VR Tracking" button uses). Mode 2 is the legacy direct bone-write
     // fallback -> stretched forearm / wrong placement, which is what this was.
-    static bool s_vrHandTracking = false;
     if (ImGui::Checkbox("Start VR hand tracking", &s_vrHandTracking)) {
         OpenXRManager::Get().SetVRHandTrackingMode(s_vrHandTracking ? 4 : 0);
+        SaveVrikCalib();
     }
     ImGui::SameLine();
     if (ImGui::Button("Log VR Diag")) {
@@ -586,14 +659,6 @@ void DrawVRHandsControls() {
 
     ImGui::Separator();
     ImGui::TextUnformatted("Hand IK Calibration (per hand: R = right, L = left)");
-
-    // Defaults mirror the plugin's baked calibration (main.cpp globals).
-    static float scaleR = 1.05f, scaleL = 1.06f;   // reach scale (arm straightening)
-    static float heightR = 0.23f, heightL = 0.23f; // vertical anchor offset (m)
-    static float swingR = 1.0f,  swingL = 1.0f;    // VRArmIK elbow-swing gain
-    static float poleR = 0.0f,   poleL = 0.0f;     // elbow pole spin (deg)
-    static float wRp = 0.0f, wRy = -90.0f, wRr = 0.0f;     // right wrist euler (deg)
-    static float wLp = -180.0f, wLy = -90.0f, wLr = 0.0f;  // left wrist euler (deg)
 
     bool calChanged = false;
     calChanged |= ImGui::SliderFloat("Reach scale R", &scaleR, 0.80f, 1.30f, "%.3f");
@@ -628,6 +693,7 @@ void DrawVRHandsControls() {
         OpenXRManager::Get().SetVRHandCalib(scaleR, scaleL, heightR, heightL,
                                             swingR, swingL, poleR, poleL,
                                             wRp, wRy, wRr, wLp, wLy, wLr);
+        SaveVrikCalib();
     }
 }
 

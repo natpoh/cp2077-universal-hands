@@ -17,14 +17,11 @@ local function LoadConfig()
     if file then
         local content = file:read("*a")
         if content and content ~= "" then
-            -- Use pcall to ensure errors in json.decode don't break the script silently
-            local status, parsed = pcall(json.decode, content)
-            if status and parsed then
+            local parsed = json.decode(content)
+            if parsed then
                 for k, v in pairs(parsed) do
                     cfg[k] = v
                 end
-            else
-                print("UniversalHands: Failed to parse config.json")
             end
         end
         file:close()
@@ -52,14 +49,6 @@ local function applyCalibration()
 
     pcall(function() Game.SetVRHandOffset(cfg.pitchL, cfg.yawL, cfg.rollL, 1) end)
     pcall(function() Game.SetVRHandOffset(cfg.pitchR, cfg.yawR, cfg.rollR, 0) end)
-
-    if cfg.enabled then
-        pcall(function() Game.InstallVRAnimPoseHook() end)
-        pcall(function() Game.ArmVRAnimPosePlayer() end)
-        pcall(function() Game.SetVRBindMode(4) end)
-    else
-        pcall(function() Game.SetVRBindMode(0) end)
-    end
 end
 
 registerForEvent("onOverlayOpen", function()
@@ -88,7 +77,13 @@ registerForEvent("onDraw", function()
         local cEnabled, toggled = ImGui.Checkbox("Enable Universal Hands", cfg.enabled)
         if toggled then
             cfg.enabled = cEnabled
-            changed = true
+            if cfg.enabled then
+                pcall(function() Game.InstallVRAnimPoseHook() end)
+                pcall(function() Game.ArmVRAnimPosePlayer() end)
+                pcall(function() Game.SetVRBindMode(4) end)
+            else
+                pcall(function() Game.SetVRBindMode(0) end)
+            end
         end
 
         ImGui.Separator()
@@ -140,24 +135,8 @@ registerForEvent("onInit", function()
     applyCalibration()
 end)
 
-local wasArmed = false
-
 registerForEvent("onUpdate", function(dt)
     if not isReady then return end
-
-    -- Automatically attempt to arm the player if enabled and not yet armed
-    if cfg.enabled and not wasArmed then
-        local success, res = pcall(function() return Game.ArmVRAnimPosePlayer() end)
-        -- res is > 0 if the player was successfully found and armed
-        if success and res and res > 0 then
-            wasArmed = true
-            -- re-apply settings just in case
-            applyCalibration()
-        end
-    elseif not cfg.enabled then
-        wasArmed = false
-    end
-
     -- Call the RED4ext-exported function every frame to drive persistent graph vars
     pcall(function() Game.UpdateVRIKAnimInputs() end)
 end)
