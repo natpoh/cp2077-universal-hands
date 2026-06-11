@@ -34,13 +34,14 @@ It features a full CET-based in-game UI to calibrate offsets, adjust arm reach, 
 1. Install the mod following the steps above.
 2. Download and launch **BodyWalkVR**.
 3. In BodyWalkVR, go to the Profiles tab and load the **Cyberpunk** profile.
-4. In the BodyWalkVR **Mapping** tab, ensure your input is set to **OpenXR** (or your preferred tracker).
-5. In the BodyWalkVR **Startup** tab, ensure **Enable Universal Tracking Output** is checked.
-6. Launch Cyberpunk 2077 and load a save where you are in First-Person view.
-7. Open the **Cyber Engine Tweaks (CET)** overlay, find the **Cyberpunk Universal Hands** window, and toggle **Enable Universal Hands**.
-8. **IMPORTANT:** BodyWalkVR acts as a virtual keyboard and gamepad emulator. Make sure the Cyberpunk 2077 game window is completely **in focus** for the inputs to register!
-9. Use the CET sliders to calibrate your hand offsets so they align perfectly with your physical controllers.
-10. Customize your gestures (like jumping or squatting) to your liking in BodyWalkVR. The settings are automatically saved and will load on your next session!
+4. In the BodyWalkVR **Main** tab, ensure **Lock HMD position to center** is checked.
+5. In the BodyWalkVR **Mapping** tab, ensure your input is set to **OpenXR** (or your preferred tracker).
+6. In the BodyWalkVR **Startup** tab, ensure **Enable Universal Tracking Output** is checked.
+7. Launch Cyberpunk 2077 and load a save where you are in First-Person view.
+8. Open the **Cyber Engine Tweaks (CET)** overlay, find the **Cyberpunk Universal Hands** window, and toggle **Enable Universal Hands**.
+9. **IMPORTANT:** BodyWalkVR acts as a virtual keyboard and gamepad emulator. Make sure the Cyberpunk 2077 game window is completely **in focus** for the inputs to register!
+10. Use the CET sliders to calibrate your hand offsets so they align perfectly with your physical controllers.
+11. Customize your gestures (like jumping or squatting) to your liking in BodyWalkVR. The settings are automatically saved and will load on your next session!
 
 ## For Developers (Open Source)
 This mod exposes its Shared Memory layout and source code, allowing anyone to write custom drivers (e.g. for gloves, external trackers, or custom VR setups) and inject them directly into Cyberpunk's animation graph. 
