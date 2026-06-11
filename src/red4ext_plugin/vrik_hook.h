@@ -6,6 +6,27 @@
 #include <MinHook.h>
 #include "vrik_solver.h"
 
+#pragma pack(push, 1)
+struct UniversalTrackingData {
+    uint32_t version;
+    uint32_t updateCounter;
+    struct Pose {
+        float pos[3];
+        float rot[4];
+        float trigger;
+        float grip;
+        float stickX;
+        float stickY;
+        uint64_t buttons;
+        uint32_t valid;
+        uint32_t padding;
+    };
+    Pose head;
+    Pose leftHand;
+    Pose rightHand;
+};
+#pragma pack(pop)
+
 extern RED4ext::Vector4 g_CameraWorldPos; 
 extern int g_CalibrationBoneIndex;
 extern void* g_PlayerAnimComponent;
@@ -136,7 +157,7 @@ extern volatile int       g_AnimPoseTestBone;    // single-bone test index (mode
 extern volatile float     g_AnimPoseTestMag;     // single-bone test magnitude (mode 2)
 
 // VR hand binding: write VR controller pose into the hand bones each frame.
-extern float* g_pSharedHands;                    // shared-memory VR hand data (16 floats/hand layout)
+extern UniversalTrackingData* g_pBodyWalkTracking;
 extern volatile int       g_VRBind;              // 0 off, 1=right pos, 2=right pos+rot, 3=both pos(+rot)
 extern volatile float     g_VRBindScale;         // position scale (VR units -> model units)
 extern volatile float     g_VRBindOffX;
@@ -611,14 +632,14 @@ extern "C" inline void* Hooked_AnimPoseApply(void* a1, void* a2, void* a3, unsig
                 // VRIK FULL-ARM IK (mode 4): model-space FK + 2-bone IK, rotation-only
                 // writes (no stretch). Anchored at the head bone's model position; the
                 // controller offset is taken straight from the proven gizmo world math.
-                if (g_VRBind == 4 && g_pSharedHands && g_VRBoneCount > 0 && g_VRHeadBoneIdx >= 0) {
+                if (g_VRBind == 4 && g_pBodyWalkTracking && g_VRBoneCount > 0 && g_VRHeadBoneIdx >= 0) {
                     VRIK_ComputeFK(boneBuf, g_VRBoneCount);
                     int hIdx = g_VRHeadBoneIdx;
                     const float* headModelPos =
                         (hIdx >= 0 && hIdx < VRIK_MAX_BONES) ? g_fkPos[hIdx] : nullptr;
                     // HMD orientation relative to recenter base (producer slots 16..19).
                     // Used to undo the HMD-local frame of the controller poses.
-                    const float* hmdRel = &g_pSharedHands[16];
+                    const float* hmdRel = g_pBodyWalkTracking->head.rot;
                     if (headModelPos) {
                         // Body frame from FK bone positions -- convention-independent (works
                         // regardless of the model's axis layout). bodyUp = root->head,
@@ -657,9 +678,9 @@ extern "C" inline void* Hooked_AnimPoseApply(void* a1, void* a2, void* a3, unsig
                             bodyFwd[0]*=bestSign; bodyFwd[1]*=bestSign; bodyFwd[2]*=bestSign;
                         }
                         // Right arm.
-                        if (g_pSharedHands[8] > 0.0f) {
-                            const float vrPos[3]  = { g_pSharedHands[9],  g_pSharedHands[10], g_pSharedHands[11] };
-                            const float vrQuat[4] = { g_pSharedHands[12], g_pSharedHands[13], g_pSharedHands[14], g_pSharedHands[15] };
+                        if (g_pBodyWalkTracking->rightHand.valid > 0) {
+                            const float vrPos[3]  = { g_pBodyWalkTracking->rightHand.pos[0], g_pBodyWalkTracking->rightHand.pos[1], g_pBodyWalkTracking->rightHand.pos[2] };
+                            const float vrQuat[4] = { g_pBodyWalkTracking->rightHand.rot[0], g_pBodyWalkTracking->rightHand.rot[1], g_pBodyWalkTracking->rightHand.rot[2], g_pBodyWalkTracking->rightHand.rot[3] };
                             float target[3], handRot[4];
                             const float wristR[4] = { g_VRWristR_I, g_VRWristR_J, g_VRWristR_K, g_VRWristR_R };
                             const float offR[3]   = { g_VROffRX, g_VROffRY, g_VROffRZ };
@@ -671,9 +692,9 @@ extern "C" inline void* Hooked_AnimPoseApply(void* a1, void* a2, void* a3, unsig
                                           /*isLeft*/false, /*storeDbg*/true);
                         }
                         // Left arm (mirror; same shared-memory left slots).
-                        if (g_pSharedHands[0] > 0.0f && g_VRLeftUpperArmIdx >= 0) {
-                            const float vrPos[3]  = { g_pSharedHands[1], g_pSharedHands[2], g_pSharedHands[3] };
-                            const float vrQuat[4] = { g_pSharedHands[4], g_pSharedHands[5], g_pSharedHands[6], g_pSharedHands[7] };
+                        if (g_pBodyWalkTracking->leftHand.valid > 0 && g_VRLeftUpperArmIdx >= 0) {
+                            const float vrPos[3]  = { g_pBodyWalkTracking->leftHand.pos[0], g_pBodyWalkTracking->leftHand.pos[1], g_pBodyWalkTracking->leftHand.pos[2] };
+                            const float vrQuat[4] = { g_pBodyWalkTracking->leftHand.rot[0], g_pBodyWalkTracking->leftHand.rot[1], g_pBodyWalkTracking->leftHand.rot[2], g_pBodyWalkTracking->leftHand.rot[3] };
                             float target[3], handRot[4];
                             const float wristL[4] = { g_VRWristL_I, g_VRWristL_J, g_VRWristL_K, g_VRWristL_R };
                             const float offL[3]   = { g_VROffLX, g_VROffLY, g_VROffLZ };
@@ -687,7 +708,7 @@ extern "C" inline void* Hooked_AnimPoseApply(void* a1, void* a2, void* a3, unsig
                     }
                 }
                 // Legacy direct-write binding (modes 1..3): single-bone hand write.
-                else if (g_VRBind > 0 && g_pSharedHands) {
+                else if (g_VRBind > 0 && g_pBodyWalkTracking) {
                     // Resolve the head bone pose once (shared by both hands).
                     bool  headOk = false;
                     float headPos[3]  = { 0.0f, 0.0f, 0.0f };
@@ -702,17 +723,17 @@ extern "C" inline void* Hooked_AnimPoseApply(void* a1, void* a2, void* a3, unsig
                     }
 
                     // Right Hand (VR slot 8 = valid, 9..11 = pos, 12..15 = quat).
-                    if (g_pSharedHands[8] > 0.0f) {
-                        const float vrPos[3]  = { g_pSharedHands[9],  g_pSharedHands[10], g_pSharedHands[11] };
-                        const float vrQuat[4] = { g_pSharedHands[12], g_pSharedHands[13], g_pSharedHands[14], g_pSharedHands[15] };
+                    if (g_pBodyWalkTracking->rightHand.valid > 0) {
+                        const float vrPos[3]  = { g_pBodyWalkTracking->rightHand.pos[0], g_pBodyWalkTracking->rightHand.pos[1], g_pBodyWalkTracking->rightHand.pos[2] };
+                        const float vrQuat[4] = { g_pBodyWalkTracking->rightHand.rot[0], g_pBodyWalkTracking->rightHand.rot[1], g_pBodyWalkTracking->rightHand.rot[2], g_pBodyWalkTracking->rightHand.rot[3] };
                         VRIK_WriteHand(boneBuf, g_VRRightBoneIdx, headPos, headQuat, headOk,
                                        vrPos, vrQuat, (g_VRBind == 2 || g_VRBind == 3));
                     }
 
                     // Left Hand (VR slot 0 = valid, 1..3 = pos, 4..7 = quat).
-                    if ((g_VRBind == 3) && g_pSharedHands[0] > 0.0f) {
-                        const float vrPos[3]  = { g_pSharedHands[1], g_pSharedHands[2], g_pSharedHands[3] };
-                        const float vrQuat[4] = { g_pSharedHands[4], g_pSharedHands[5], g_pSharedHands[6], g_pSharedHands[7] };
+                    if ((g_VRBind == 3) && g_pBodyWalkTracking->leftHand.valid > 0) {
+                        const float vrPos[3]  = { g_pBodyWalkTracking->leftHand.pos[0], g_pBodyWalkTracking->leftHand.pos[1], g_pBodyWalkTracking->leftHand.pos[2] };
+                        const float vrQuat[4] = { g_pBodyWalkTracking->leftHand.rot[0], g_pBodyWalkTracking->leftHand.rot[1], g_pBodyWalkTracking->leftHand.rot[2], g_pBodyWalkTracking->leftHand.rot[3] };
                         VRIK_WriteHand(boneBuf, g_VRLeftBoneIdx, headPos, headQuat, headOk,
                                        vrPos, vrQuat, true);
                     }

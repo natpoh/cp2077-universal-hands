@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyberpunkVR_Hands)
+project(Cyberpunk_UniversalHands)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -17,8 +17,8 @@ add_library(minhook STATIC
 )
 target_include_directories(minhook PUBLIC ${MINHOOK_DIR}/include)
 
-add_library(CyberpunkVR_Hands SHARED main.cpp)
-target_link_libraries(CyberpunkVR_Hands PRIVATE RED4ext.SDK minhook)
+add_library(Cyberpunk_UniversalHands SHARED main.cpp)
+target_link_libraries(Cyberpunk_UniversalHands PRIVATE RED4ext.SDK minhook)
 
 # Rename to .dll but standard prefix is none
-set_target_properties(CyberpunkVR_Hands PROPERTIES PREFIX "")
+set_target_properties(Cyberpunk_UniversalHands PROPERTIES PREFIX "")

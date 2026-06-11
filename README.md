@@ -1,122 +1,43 @@
-# CyberpunkVRPort
+# Cyberpunk Universal Hands VR
 
-OpenXR `dxgi.dll` VR proxy for **Cyberpunk 2077**, now with **6-DoF motion-controlled VR hands**
-(full-arm VRIK) and an in-headset settings overlay.
+## Description
+**Cyberpunk Universal Hands VR** is a powerful, **100% free** RED4ext and Cyber Engine Tweaks (CET) plugin that allows seamless external injection of VR hand tracking into Cyberpunk 2077's first-person animations. 
 
-Repository: <https://github.com/dariulone/cyberpunk-vr-port>
+*Please note: This project is a completely free and open-source fork based on the original **BodyWalkVR Lite**.*
 
-`F10` opens the in-game VR menu.
+Originally built as a companion to **BodyWalkVR**, this mod uses a high-performance Shared Memory interface to read VR controller positions and rotations (from OpenXR, SteamVR, or custom tracking solutions) and applies them directly to the in-game player skeleton (VRIK) in real-time.
 
-## Current State
+It features a full CET-based in-game UI to calibrate offsets, adjust arm reach, and persist settings between sessions.
 
-### Stereo / Camera
-- **Mono** — working and smooth. Head-locked jitter/rubber-banding was fixed by binding the
-  submitted pose to the exact render-camera sequence used by the engine. This is the stable baseline.
-- **AER** — working stereo depth in-world (first-pair parity freeze, Mono→AER stall, eye/slot
-  mismatch, pseudoscopic sign, and the black AER menu were all fixed). `AER V2` / optical-flow
-  interpolation is still a separate experimental track.
-
-### VR Hands (new)
-- **Full VRIK-style VR hands** driven directly by the motion controllers, with a complete
-  **shoulder → elbow → hand** IK chain. The forearm no longer stretches; the wrist orientation,
-  elbow bend and elbow swivel follow the controller naturally.
-- Tracking runs as a **RED4ext plugin** (`CyberpunkVR_Hands.dll`) that writes the resolved bone
-  rotations every frame; controller poses are bridged from the proxy through shared memory.
-- **Weapons work** while tracked.
-
-## Features
-
-- Direct OpenXR integration inside the REDengine render path (Mono + AER).
-- Head tracking with in-engine camera injection and runtime FOV-based projection handling.
-- **Motion-controlled VR hands** with full-arm VRIK (VRArmIK-style elbow swivel heuristic).
-- **In-headset F10 overlay** with separated tabs:
-  - **VRIK** — start/stop hand tracking, live IK calibration (per-hand reach scale, height,
-    elbow swing, elbow pole, wrist rotation offset), Log VR Diag.
-  - **HUD** — live VR HUD layout (per-element X / Y / Size on a single compact row).
-  - **Debug Gizmos** — hand overlay / proxy / debug axes / locator scale.
-  - **Tracking / Camera** — movement-control mode and recenter.
-- **Head-oriented locomotion** — optional *Movement Control: HMD* so on-foot movement follows where
-  you look (driving is untouched).
-- SteamVR (OpenVR) runtime support, selectable alongside OpenXR.
-- Pre-launch render-resolution selector.
-- Runtime/hardware diagnostics in the log (OpenXR runtime + system, GPU model + driver, swapchain
-  init, frame-pipeline events).
-- **Verbose-log toggle** — the log is quiet by default for clean tester reports; deep per-frame
-  diagnostics are behind one checkbox.
+## Key Features
+* **Universal Tracking Support**: Reads any tracking data sent to the `Local\BodyWalkVR_UniversalTracking` shared memory map. Works with BodyWalkVR, custom scripts, and external VR overlays.
+* **Full VRIK Arm Solver**: Bypasses the game's static arm animations and uses a custom 2-bone Inverse Kinematics (IK) solver to naturally position the shoulder, elbow, and wrist based on your real-life VR controllers.
+* **In-Game Calibration (CET)**: Open the Cyber Engine Tweaks overlay to instantly adjust left and right hand offsets, reach scale, wrist rotation (pitch/yaw/roll), and elbow swing limits.
+* **Persistent Settings**: All your calibration values are automatically saved to `config.json` and applied every time you launch the game.
+* **Head-Relative Locking**: Prevents hands from swinging wildly when you physically turn your head or when the game forces the camera to look around.
 
 ## Requirements
+* [Cyber Engine Tweaks (CET)](https://www.nexusmods.com/cyberpunk2077/mods/107)
+* [RED4ext](https://www.nexusmods.com/cyberpunk2077/mods/2380)
+* *Optional but recommended:* A VR Mod (like the LukeRoss VR mod) to view the hands in VR.
+* *A Tracking Provider:* You need a program (like BodyWalkVR) to write your controller positions to the shared memory map, otherwise the hands will fall back to default animations.
 
-- **Cyberpunk 2077** (PC).
-- An OpenXR runtime (e.g. Virtual Desktop / VDXR, SteamVR) — start it **before** the game.
-- For VR hands and the VR HUD:
-  - **RED4ext** — loads `CyberpunkVR_Hands.dll`.
-  - **Cyber Engine Tweaks (CET)** — runs the `CyberpunkVRPort_VRIK` and `CyberpunkVRPort_HUD` mods.
+## Installation & Download
 
-## Installation
+1. Download the **BodyWalkVR Tracker App** from **[https://bodywalkvr.com/download](https://bodywalkvr.com/download)** (Required for tracking).
+2. Download the Mod `.zip` file from the **Files** tab here on NexusMods.
+3. Ensure you have **CET** and **RED4ext** installed and working.
+4. Extract the contents of the mod `.zip` file into your main Cyberpunk 2077 game directory.
+5. The folder structure should merge with your `bin/x64/plugins/` (for RED4ext) and `bin/x64/plugins/cyber_engine_tweaks/mods/` (for the CET UI).
 
-1. Install **RED4ext** and **Cyber Engine Tweaks** if you don't have them.
-2. Download the latest release archive and extract it into your **Cyberpunk 2077** game folder so the
-   files land in:
-   - `bin\x64\dxgi.dll`
-   - `bin\x64\openvr_api.dll` *(only needed for the SteamVR path)*
-   - `bin\x64\plugins\cyber_engine_tweaks\mods\CyberpunkVRPort_VRIK\`
-   - `bin\x64\plugins\cyber_engine_tweaks\mods\CyberpunkVRPort_HUD\`
-   - `red4ext\plugins\CyberpunkVR_Hands\CyberpunkVR_Hands.dll`
-3. Start your OpenXR runtime first, then launch the game.
+## How to Calibrate
+1. Launch the game and load a save where you are in First-Person view.
+2. Open the **Cyber Engine Tweaks (CET)** overlay.
+3. Find the **Cyberpunk Universal Hands** window.
+4. Toggle **Enable Universal Hands**.
+5. Use the sliders to adjust your hand offsets so that the in-game hands align perfectly with your physical controllers.
+6. The settings are automatically saved and will load on your next session!
 
-> Proxy-only install (camera/stereo, no hands): just drop `bin\x64\dxgi.dll` next to
-> `Cyberpunk2077.exe`. The VR hands/HUD additionally need RED4ext + CET as above.
-
-## Startup / Runtime Notes
-
-This mod uses **OpenXR**; the log reports which runtime is active.
-
-To force the OpenXR path through SteamVR, set `xr_runtime=1` in `vrport.ini` and restart. The loader
-tries `openvr_api.dll` first, then the local Steam install, and sets `XR_RUNTIME_JSON` to SteamVR's
-OpenXR manifest.
-
-### Virtual Desktop / PICO
-- Start Virtual Desktop / VDXR first, then launch the game normally.
-- If the game opens as a flat desktop window inside the headset, check the log for the selected
-  OpenXR runtime.
-
-## Controls
-
-- `F7` — recenter
-- `F10` — open the in-game VR settings overlay
-
-## Logs
-
-Main log file:
-
-- `Cyberpunk 2077\bin\x64\cyberpunkvrport.log`
-
-It is quiet by default (startup + key events only). For deep diagnostics, enable
-**F10 → DLSS/Debug → Verbose log**. Runtime `.txt` diagnostic dumps are written next to the game exe.
-
-This is the preferred file for community bug reports.
-
-## Media
-
-[![Cyberpunk VR Short 1](https://img.youtube.com/vi/Q_nt0dceXNU/0.jpg)](https://www.youtube.com/shorts/Q_nt0dceXNU)
-[![Cyberpunk VR Short 2](https://img.youtube.com/vi/CXeYW1_FTWE/0.jpg)](https://www.youtube.com/shorts/CXeYW1_FTWE)
-
-![IMG_6564](images/IMG_6564.jpg)
-![IMG_6566](images/IMG_6566.jpg)
-![IMG_6570](images/IMG_6570.jpg)
-![IMG_6573](images/IMG_6573.JPG)
-
-*Photos were taken through PICO 4 lenses using an iPhone 13 Pro Max.*
-
-![Boe6Eod7Nty Valve Index](images/Boe6Eod7Nty_valve_index.jpg)
-![Boe6Eod7Nty Valve Index 2](images/Boe6Eod7Nty_valve_index_2.jpg)
-
-*Valve Index (canted-display OpenXR) shots courtesy of [Boe6Eod7Nty](https://github.com/Boe6Eod7Nty).*
-
-## Test Hardware Used During Development
-
-- Headset: PICO 4 (via VDXR)
-- CPU: AMD Ryzen 7 5800X
-- GPU: NVIDIA RTX 5070 Ti
-- RAM: DDR4 32GB
-- OS: Windows 11 Pro 25H2 26200.8457
+## For Developers (Open Source)
+This mod exposes its Shared Memory layout and source code, allowing anyone to write custom drivers (e.g. for gloves, external trackers, or custom VR setups) and inject them directly into Cyberpunk's animation graph. 
+Check out the GitHub repository for source code and documentation on the memory structure!

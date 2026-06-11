@@ -62,7 +62,11 @@ static std::string VRDiagPath(const char* name) {
 }
 
 static HANDLE g_hMapFile = NULL;
-static float* g_pSharedHands = nullptr;
+
+
+
+static UniversalTrackingData* g_pBodyWalkTracking = nullptr;
+static HANDLE g_hBodyWalkMap = NULL;
 static bool g_chunkDebugEnabled = false;
 static bool g_chunkDebugWasEnabled = false;
 static int32_t g_chunkDebugComponentIndex = -1;
@@ -170,38 +174,7 @@ static void WriteVRDiagCore(float camX, float camY, float camZ,
 // the plugin keeps its baked defaults so the CET sliders still work standalone.
 // Also polls the one-shot diag-request counter ([48]) and dumps a diag file
 // when it changes, so the overlay's "Log VR Diag" button works in-headset.
-static void PollVRCalibFromShared() {
-    if (!g_pSharedHands) return;
-    if (g_pSharedHands[33] != 0.0f) {
-        const float* c = &g_pSharedHands[34]; // scaleR,scaleL,heightR,heightL,swingR,swingL,poleR,poleL, wRpyr(3), wLpyr(3)
-        g_VRScaleR = c[0]; g_VRScaleL = c[1];
-        g_VROffRZ  = c[2]; g_VROffLZ  = c[3];
-        g_VRElbowSwingR = c[4]; g_VRElbowSwingL = c[5];
-        g_VRElbowPoleR  = c[6]; g_VRElbowPoleL  = c[7];
-        // Wrist corrections: euler(pitch,yaw,roll) deg -> quat (same XYZ convention as SetVRHandOffset).
-        const float d2r = 0.01745329252f * 0.5f;
-        for (int side = 0; side < 2; ++side) {
-            float p = c[8 + side*3], y = c[9 + side*3], r = c[10 + side*3];
-            float cp = std::cos(p*d2r), sp = std::sin(p*d2r);
-            float cy = std::cos(y*d2r), sy = std::sin(y*d2r);
-            float cr = std::cos(r*d2r), sr = std::sin(r*d2r);
-            float qi = sp*cy*cr + cp*sy*sr;
-            float qj = cp*sy*cr - sp*cy*sr;
-            float qk = cp*cy*sr + sp*sy*cr;
-            float qr = cp*cy*cr - sp*sy*sr;
-            if (side == 0) { g_VRWristR_I = qi; g_VRWristR_J = qj; g_VRWristR_K = qk; g_VRWristR_R = qr; }
-            else           { g_VRWristL_I = qi; g_VRWristL_J = qj; g_VRWristL_K = qk; g_VRWristL_R = qr; }
-        }
-    }
-    // One-shot diag request (monotonic counter from the overlay).
-    static int s_lastDiagReq = 0;
-    int req = static_cast<int>(g_pSharedHands[48]);
-    if (req != s_lastDiagReq) {
-        s_lastDiagReq = req;
-        // Camera position isn't published; the decisive diag lines don't need it.
-        WriteVRDiagCore(0, 0, 0, g_VRCamI, g_VRCamJ, g_VRCamK, g_VRCamR);
-    }
-}
+// Removed PollVRCalibFromShared()
 
 static RED4ext::world::AnimationSystem* ScanForAnimationSystemInBlock(uint8_t* aBase, size_t aSize, std::ofstream* aOut = nullptr);
 static const char* ClassifyQword(uint64_t v);
@@ -267,27 +240,27 @@ static uint64_t BuildChunkDebugMask() {
 }
 
 void EnsureSharedMemory() {
-    if (!g_pSharedHands) {
-        g_hMapFile = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, 256, "CyberpunkVR_Hands_Shared");
-        if (g_hMapFile) g_pSharedHands = (float*)MapViewOfFile(g_hMapFile, FILE_MAP_ALL_ACCESS, 0, 0, 256);
+    if (!g_pBodyWalkTracking) {
+        g_hBodyWalkMap = OpenFileMappingA(FILE_MAP_READ, FALSE, "Local\\BodyWalkVR_UniversalTracking");
+        if (g_hBodyWalkMap) g_pBodyWalkTracking = (UniversalTrackingData*)MapViewOfFile(g_hBodyWalkMap, FILE_MAP_READ, 0, 0, sizeof(UniversalTrackingData));
     }
 }
 
 void GetLeftVRHandValid(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t a4) {
     aFrame->code++; EnsureSharedMemory();
-    if (aOut) *aOut = g_pSharedHands ? (g_pSharedHands[0] > 0.0f) : false;
+    if (aOut) *aOut = g_pBodyWalkTracking ? (g_pBodyWalkTracking->leftHand.valid == 1) : false;
 }
 
 void GetRightVRHandValid(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t a4) {
     aFrame->code++; EnsureSharedMemory();
-    if (aOut) *aOut = g_pSharedHands ? (g_pSharedHands[8] > 0.0f) : false;
+    if (aOut) *aOut = g_pBodyWalkTracking ? (g_pBodyWalkTracking->rightHand.valid == 1) : false;
 }
 
 void GetLeftVRHandPos(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, RED4ext::Vector4* aOut, int64_t a4) {
     aFrame->code++; EnsureSharedMemory();
     if (aOut) {
-        if (g_pSharedHands) {
-            aOut->X = g_pSharedHands[1]; aOut->Y = g_pSharedHands[2]; aOut->Z = g_pSharedHands[3];
+        if (g_pBodyWalkTracking) {
+            aOut->X = g_pBodyWalkTracking->leftHand.pos[0]; aOut->Y = g_pBodyWalkTracking->leftHand.pos[1]; aOut->Z = g_pBodyWalkTracking->leftHand.pos[2];
         } else { aOut->X = aOut->Y = aOut->Z = 0.0f; }
         aOut->W = 1.0f;
     }
@@ -296,8 +269,8 @@ void GetLeftVRHandPos(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFra
 void GetRightVRHandPos(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, RED4ext::Vector4* aOut, int64_t a4) {
     aFrame->code++; EnsureSharedMemory();
     if (aOut) {
-        if (g_pSharedHands) {
-            aOut->X = g_pSharedHands[9]; aOut->Y = g_pSharedHands[10]; aOut->Z = g_pSharedHands[11];
+        if (g_pBodyWalkTracking) {
+            aOut->X = g_pBodyWalkTracking->rightHand.pos[0]; aOut->Y = g_pBodyWalkTracking->rightHand.pos[1]; aOut->Z = g_pBodyWalkTracking->rightHand.pos[2];
         } else { aOut->X = aOut->Y = aOut->Z = 0.0f; }
         aOut->W = 1.0f;
     }
@@ -306,8 +279,8 @@ void GetRightVRHandPos(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFr
 void GetLeftVRHandRot(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, RED4ext::Quaternion* aOut, int64_t a4) {
     aFrame->code++; EnsureSharedMemory();
     if (aOut) {
-        if (g_pSharedHands) {
-            aOut->i = g_pSharedHands[4]; aOut->j = g_pSharedHands[5]; aOut->k = g_pSharedHands[6]; aOut->r = g_pSharedHands[7];
+        if (g_pBodyWalkTracking) {
+            aOut->i = g_pBodyWalkTracking->leftHand.rot[0]; aOut->j = g_pBodyWalkTracking->leftHand.rot[1]; aOut->k = g_pBodyWalkTracking->leftHand.rot[2]; aOut->r = g_pBodyWalkTracking->leftHand.rot[3];
         } else { aOut->i = aOut->j = aOut->k = 0.0f; aOut->r = 1.0f; }
     }
 }
@@ -315,15 +288,15 @@ void GetLeftVRHandRot(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFra
 void GetRightVRHandRot(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, RED4ext::Quaternion* aOut, int64_t a4) {
     aFrame->code++; EnsureSharedMemory();
     if (aOut) {
-        if (g_pSharedHands) {
-            aOut->i = g_pSharedHands[12]; aOut->j = g_pSharedHands[13]; aOut->k = g_pSharedHands[14]; aOut->r = g_pSharedHands[15];
+        if (g_pBodyWalkTracking) {
+            aOut->i = g_pBodyWalkTracking->rightHand.rot[0]; aOut->j = g_pBodyWalkTracking->rightHand.rot[1]; aOut->k = g_pBodyWalkTracking->rightHand.rot[2]; aOut->r = g_pBodyWalkTracking->rightHand.rot[3];
         } else { aOut->i = aOut->j = aOut->k = 0.0f; aOut->r = 1.0f; }
     }
 }
 
 void IsVRHandLinked(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t a4) {
     aFrame->code++; EnsureSharedMemory();
-    if (aOut) *aOut = (g_pSharedHands != nullptr);
+    if (aOut) *aOut = (g_pBodyWalkTracking != nullptr);
 }
 
 static RED4ext::WeakHandle<RED4ext::IScriptable> g_rightHandEntity;
@@ -1895,18 +1868,18 @@ static bool FillAnimTestPose(int32_t aMode, RED4ext::Vector4& aLeft, RED4ext::Ve
     if (aMode == 2)
     {
         EnsureSharedMemory();
-        if (!g_pSharedHands)
+        if (!g_pBodyWalkTracking)
             return false;
 
         // Approximate XR-local -> game-local mapping based on previous working hand-space conversion.
-        aLeft.X = g_pSharedHands[1];
-        aLeft.Y = -g_pSharedHands[3];
-        aLeft.Z = g_pSharedHands[2];
+        aLeft.X = g_pBodyWalkTracking->leftHand.pos[0];
+        aLeft.Y = -g_pBodyWalkTracking->leftHand.pos[2];
+        aLeft.Z = g_pBodyWalkTracking->leftHand.pos[1];
         aLeft.W = 1.0f;
 
-        aRight.X = g_pSharedHands[9];
-        aRight.Y = -g_pSharedHands[11];
-        aRight.Z = g_pSharedHands[10];
+        aRight.X = g_pBodyWalkTracking->rightHand.pos[0];
+        aRight.Y = -g_pBodyWalkTracking->rightHand.pos[2];
+        aRight.Z = g_pBodyWalkTracking->rightHand.pos[1];
         aRight.W = 1.0f;
         return true;
     }
@@ -2275,44 +2248,8 @@ void UpdateVRIKAnimInputs(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* 
     RED4EXT_UNUSED_PARAMETER(aContext); RED4EXT_UNUSED_PARAMETER(a4);
     aFrame->code++;
 
-    // --- In-VR overlay activation -------------------------------------------
-    // The in-headset menu (imgui_overlay) writes a tracking-request code into
-    // shared-memory slot [32] (0 = off, 2 = position+rotation). CET calls us
-    // every frame on the game thread, so installing the hooks / arming the
-    // player here is exactly as safe as the manual "Start VR Tracking" button.
-    // Edge-triggered on g_VRBind so the CET button still works independently.
+    // Ensure the shared-memory mapping is alive each frame.
     EnsureSharedMemory();
-    if (g_pSharedHands) {
-        static bool s_vrHooksInstalled = false;
-        static bool s_vrArmed = false;
-        static int  s_lastReq = 0;
-        int req = static_cast<int>(g_pSharedHands[32]);
-        if (req > 0) {
-            if (!s_vrHooksInstalled) {
-                // Only the pose-apply hook is needed. The old ComponentFunc21 hook
-                // (InstallVRIKMinHook) is a dead end -- g_PlayerAnimComponent is never
-                // assigned so it does nothing, yet it trampolines a super-hot per-component
-                // Update function and tanked FPS (70+ -> 10-15).
-                InstallAnimPoseHook();
-                s_vrHooksInstalled = true;
-            }
-            if (!s_vrArmed && VRIK_DoArmPlayer() > 0) {
-                s_vrArmed = true;
-            }
-            if (s_lastReq <= 0) g_VRBind = req;   // off -> on edge
-            // Keep the diag bone snapshot fresh while tracking, so the overlay's
-            // "Log VR Diag" works without the CET window's capture toggle.
-            g_VRDiagCapture = 1;
-        } else {
-            if (s_lastReq > 0) { g_VRBind = 0; g_VRDiagCapture = 0; } // on -> off edge
-            s_vrArmed = false;                     // re-arm on next activation
-        }
-        s_lastReq = req;
-
-        // Pull IK calibration the overlay published + service one-shot diag requests.
-        PollVRCalibFromShared();
-    }
-    // ------------------------------------------------------------------------
 
     if (g_rootGraphFloatPersistentPreset != 0)
     {
@@ -3972,7 +3909,7 @@ static void WriteVRDiagCore(float camX, float camY, float camZ,
 
     // Right-hand gizmo target, identical math to the CET gizmo (init.lua).
     float raw[3] = { 0, 0, 0 };
-    if (g_pSharedHands) { raw[0] = g_pSharedHands[9]; raw[1] = g_pSharedHands[10]; raw[2] = g_pSharedHands[11]; }
+    if (g_pBodyWalkTracking) { raw[0] = g_pBodyWalkTracking->rightHand.pos[0]; raw[1] = g_pBodyWalkTracking->rightHand.pos[1]; raw[2] = g_pBodyWalkTracking->rightHand.pos[2]; }
     float local[3] = { raw[0], -raw[2], raw[1] };          // mapLocalPos: (x, -z, y)
     float camQuat[4] = { qi, qj, qk, qr };
     float worldOff[3];
@@ -3988,17 +3925,19 @@ static void WriteVRDiagCore(float camX, float camY, float camZ,
     out << "VR.rawR  = (" << raw[0] << ", " << raw[1] << ", " << raw[2] << ")\n";
     out << "gizmoWorld(R) = (" << gizmo[0] << ", " << gizmo[1] << ", " << gizmo[2] << ")\n";
     // HMD orientation rel to base (slots 16..19) + head-independent base-frame offset.
-    if (g_pSharedHands) {
-        const float* h = &g_pSharedHands[16];
+    if (g_pBodyWalkTracking) {
+        const float* h = g_pBodyWalkTracking->head.rot;
         float baseOff[3] = {
             (h[3]*h[3]-h[0]*h[0]-h[1]*h[1]-h[2]*h[2])*raw[0] + 2.0f*(h[0]*h[1]-h[3]*h[2])*raw[1] + 2.0f*(h[0]*h[2]+h[3]*h[1])*raw[2],
             2.0f*(h[0]*h[1]+h[3]*h[2])*raw[0] + (h[3]*h[3]-h[0]*h[0]+h[1]*h[1]-h[2]*h[2])*raw[1] + 2.0f*(h[1]*h[2]-h[3]*h[0])*raw[2],
             2.0f*(h[0]*h[2]-h[3]*h[1])*raw[0] + 2.0f*(h[1]*h[2]+h[3]*h[0])*raw[1] + (h[3]*h[3]-h[0]*h[0]-h[1]*h[1]+h[2]*h[2])*raw[2],
         };
         out << "hmdRel   = (" << h[0] << ", " << h[1] << ", " << h[2] << ", " << h[3] << ")\n";
-        out << "baseOff(hmdRel*raw) = (" << baseOff[0] << ", " << baseOff[1] << ", " << baseOff[2] << ")\n";
-        out << "mapLocal(x,-z,y)    = (" << baseOff[0] << ", " << -baseOff[2] << ", " << baseOff[1] << ")\n";
+        out << "baseOff  = (" << baseOff[0] << ", " << baseOff[1] << ", " << baseOff[2] << ")\n";
     }
+
+    out << "boneStats= (hook=" << g_hookMatchCalls << " calls, pose=" << g_AnimPoseMatchCalls << " calls)\n";
+    out << "hookArmed= " << (g_PlayerAnimComponent != nullptr) << "\n";
     out << "headIdx=" << g_VRHeadBoneIdx << " rightIdx=" << g_VRRightBoneIdx << " leftIdx=" << g_VRLeftBoneIdx
         << " diagCapture=" << g_VRDiagCapture << " lastBoneBuf=0x" << std::hex << g_AnimPoseLastBoneBuf << std::dec << "\n";
 
