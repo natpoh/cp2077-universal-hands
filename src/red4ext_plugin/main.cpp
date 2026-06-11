@@ -118,7 +118,7 @@ volatile uintptr_t g_AnimPoseLastBoneBuf = 0;
 volatile int       g_AnimPoseTestBone = -1;
 volatile float     g_AnimPoseTestMag = 1.0f;
 
-volatile int       g_VRBind = 0;
+volatile int       g_VRBind = 4;
 volatile float     g_VRBindScale = 1.0f;
 volatile float     g_VRBindOffX = 0.0f;
 volatile float     g_VRBindOffY = 0.0f;
@@ -3763,7 +3763,8 @@ void SetVRBindMode(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame,
     int32_t mode = 0;
     RED4ext::GetParameter(aFrame, &mode);
     aFrame->code++;
-    g_VRBind = mode;
+    // Hardcode mode 4 (Full Arm VRIK) to prevent Hands from rotating with the shoulders
+    g_VRBind = 4;
     if (aOut) *aOut = 1;
 }
 
