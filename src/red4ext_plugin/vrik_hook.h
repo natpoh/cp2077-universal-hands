@@ -551,10 +551,8 @@ static inline void VRIK_BuildHandTarget(const float* headModelPos, const float* 
     bool haveHmd = hmdRel &&
         (hmdRel[0]*hmdRel[0] + hmdRel[1]*hmdRel[1] + hmdRel[2]*hmdRel[2] + hmdRel[3]*hmdRel[3]) > 1e-4f;
     if (haveHmd) {
-        // Conjugate (inverse) of the HMD quaternion to UNDO the head rotation.
-        float hmdInv[4] = { -hmdRel[0], -hmdRel[1], -hmdRel[2], hmdRel[3] };
-        VRIK_QuatRotateVec(hmdInv, vrPos, basePos);
-        VRIK_QuatMul(hmdInv, vrQuat, baseQuat);
+        VRIK_QuatRotateVec(hmdRel, vrPos, basePos);
+        VRIK_QuatMul(hmdRel, vrQuat, baseQuat);
         VRIK_QuatNorm(baseQuat);
     } else {
         basePos[0]=vrPos[0]; basePos[1]=vrPos[1]; basePos[2]=vrPos[2];
