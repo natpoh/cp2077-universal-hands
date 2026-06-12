@@ -15,10 +15,12 @@ It features a full CET-based in-game UI to calibrate offsets, adjust arm reach, 
 * **In-Game Calibration (CET)**: Open the Cyber Engine Tweaks overlay to instantly adjust left and right hand offsets, reach scale, wrist rotation (pitch/yaw/roll), and elbow swing limits.
 * **Persistent Settings**: All your calibration values are automatically saved to `config.json` and applied every time you launch the game.
 * **Head-Relative Locking**: Prevents hands from swinging wildly when you physically turn your head or when the game forces the camera to look around.
+* **Hotkey Support**: You can bind a hotkey via the **Mod Settings** menu to easily toggle Universal Hands on and off during gameplay.
 
 ## Requirements
 * [Cyber Engine Tweaks (CET)](https://www.nexusmods.com/cyberpunk2077/mods/107)
 * [RED4ext](https://www.nexusmods.com/cyberpunk2077/mods/2380)
+* [Mod Settings](https://www.nexusmods.com/cyberpunk2077/mods/4885)
 * *Optional but recommended:* A VR Mod (like the LukeRoss VR mod) to view the hands in VR.
 * *A Tracking Provider:* You need a program (like BodyWalkVR) to write your controller positions to the shared memory map, otherwise the hands will fall back to default animations.
 

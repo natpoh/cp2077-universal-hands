@@ -8,8 +8,8 @@ local cfg = {
     xOffR = 0.0, yOffR = 0.0, zOffR = 0.23,
     swingL = 1.0, swingR = 1.0,
     poleL = 0.0, poleR = 0.0,
-    pitchL = 180.0, yawL = 270.0, rollL = 0.0,
-    pitchR = 0.0, yawR = 270.0, rollR = 0.0,
+    pitchL = -180.0, yawL = -90.0, rollL = 0.0,
+    pitchR = 0.0, yawR = -90.0, rollR = 0.0,
 }
 
 local function LoadConfig()
@@ -17,14 +17,11 @@ local function LoadConfig()
     if file then
         local content = file:read("*a")
         if content and content ~= "" then
-            -- Use pcall to ensure errors in json.decode don't break the script silently
-            local status, parsed = pcall(json.decode, content)
-            if status and parsed then
+            local parsed = json.decode(content)
+            if parsed then
                 for k, v in pairs(parsed) do
                     cfg[k] = v
                 end
-            else
-                print("UniversalHands: Failed to parse config.json")
             end
         end
         file:close()
@@ -52,14 +49,6 @@ local function applyCalibration()
 
     pcall(function() Game.SetVRHandOffset(cfg.pitchL, cfg.yawL, cfg.rollL, 1) end)
     pcall(function() Game.SetVRHandOffset(cfg.pitchR, cfg.yawR, cfg.rollR, 0) end)
-
-    if cfg.enabled then
-        pcall(function() Game.InstallVRAnimPoseHook() end)
-        pcall(function() Game.ArmVRAnimPosePlayer() end)
-        pcall(function() Game.SetVRBindMode(4) end)
-    else
-        pcall(function() Game.SetVRBindMode(0) end)
-    end
 end
 
 registerForEvent("onOverlayOpen", function()
@@ -88,7 +77,13 @@ registerForEvent("onDraw", function()
         local cEnabled, toggled = ImGui.Checkbox("Enable Universal Hands", cfg.enabled)
         if toggled then
             cfg.enabled = cEnabled
-            changed = true
+            if cfg.enabled then
+                pcall(function() Game.InstallVRAnimPoseHook() end)
+                pcall(function() Game.ArmVRAnimPosePlayer() end)
+                pcall(function() Game.SetVRBindMode(4) end)
+            else
+                pcall(function() Game.SetVRBindMode(0) end)
+            end
         end
 
         ImGui.Separator()
@@ -99,9 +94,9 @@ registerForEvent("onDraw", function()
         local l_zoff, c2 = ImGui.SliderFloat("Height Offset L", cfg.zOffL, -1.0, 1.0)
         local l_swing, c3 = ImGui.SliderFloat("Elbow Swing L", cfg.swingL, 0.0, 1.0)
         local l_pole, c4 = ImGui.SliderFloat("Elbow Pole L", cfg.poleL, -180.0, 180.0)
-        local l_p, c5 = ImGui.SliderFloat("Wrist Pitch L", cfg.pitchL, 0.0, 360.0)
-        local l_y, c6 = ImGui.SliderFloat("Wrist Yaw L", cfg.yawL, 0.0, 360.0)
-        local l_r, c7 = ImGui.SliderFloat("Wrist Roll L", cfg.rollL, 0.0, 360.0)
+        local l_p, c5 = ImGui.SliderFloat("Wrist Pitch L", cfg.pitchL, -180.0, 180.0)
+        local l_y, c6 = ImGui.SliderFloat("Wrist Yaw L", cfg.yawL, -180.0, 180.0)
+        local l_r, c7 = ImGui.SliderFloat("Wrist Roll L", cfg.rollL, -180.0, 180.0)
         if c1 or c_x1 or c_y1 or c2 or c3 or c4 or c5 or c6 or c7 then
             cfg.scaleL, cfg.xOffL, cfg.yOffL, cfg.zOffL, cfg.swingL, cfg.poleL = l_scale, l_xoff, l_yoff, l_zoff, l_swing, l_pole
             cfg.pitchL, cfg.yawL, cfg.rollL = l_p, l_y, l_r
@@ -116,9 +111,9 @@ registerForEvent("onDraw", function()
         local r_zoff, c9 = ImGui.SliderFloat("Height Offset R", cfg.zOffR, -1.0, 1.0)
         local r_swing, c10 = ImGui.SliderFloat("Elbow Swing R", cfg.swingR, 0.0, 1.0)
         local r_pole, c11 = ImGui.SliderFloat("Elbow Pole R", cfg.poleR, -180.0, 180.0)
-        local r_p, c12 = ImGui.SliderFloat("Wrist Pitch R", cfg.pitchR, 0.0, 360.0)
-        local r_y, c13 = ImGui.SliderFloat("Wrist Yaw R", cfg.yawR, 0.0, 360.0)
-        local r_r, c14 = ImGui.SliderFloat("Wrist Roll R", cfg.rollR, 0.0, 360.0)
+        local r_p, c12 = ImGui.SliderFloat("Wrist Pitch R", cfg.pitchR, -180.0, 180.0)
+        local r_y, c13 = ImGui.SliderFloat("Wrist Yaw R", cfg.yawR, -180.0, 180.0)
+        local r_r, c14 = ImGui.SliderFloat("Wrist Roll R", cfg.rollR, -180.0, 180.0)
         if c8 or c_x2 or c_y2 or c9 or c10 or c11 or c12 or c13 or c14 then
             cfg.scaleR, cfg.xOffR, cfg.yOffR, cfg.zOffR, cfg.swingR, cfg.poleR = r_scale, r_xoff, r_yoff, r_zoff, r_swing, r_pole
             cfg.pitchR, cfg.yawR, cfg.rollR = r_p, r_y, r_r
@@ -138,32 +133,10 @@ registerForEvent("onInit", function()
     isReady = true
     LoadConfig()
     applyCalibration()
-
-    registerHotkey("ToggleUniversalHands", "Toggle Universal Hands", function()
-        cfg.enabled = not cfg.enabled
-        applyCalibration()
-        SaveConfig()
-    end)
 end)
-
-local wasArmed = false
 
 registerForEvent("onUpdate", function(dt)
     if not isReady then return end
-
-    -- Automatically attempt to arm the player if enabled and not yet armed
-    if cfg.enabled and not wasArmed then
-        local success, res = pcall(function() return Game.ArmVRAnimPosePlayer() end)
-        -- res is > 0 if the player was successfully found and armed
-        if success and res and res > 0 then
-            wasArmed = true
-            -- re-apply settings just in case
-            applyCalibration()
-        end
-    elseif not cfg.enabled then
-        wasArmed = false
-    end
-
     -- Call the RED4ext-exported function every frame to drive persistent graph vars
     pcall(function() Game.UpdateVRIKAnimInputs() end)
 end)
