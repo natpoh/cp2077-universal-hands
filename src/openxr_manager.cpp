@@ -1,4 +1,6 @@
 #include "openxr_manager.h"
+#include <windows.h>
+#include <sddl.h>
 #include <cstdarg>
 #include <cstdio>
 #include <vector>
@@ -2993,7 +2995,22 @@ void OpenXRManager::OnPresent(IDXGISwapChain* swapChain) {
     static HANDLE s_hMapFile = NULL;
     static float* s_pSharedHands = nullptr;
     if (!s_hMapFile) {
-        s_hMapFile = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, 256, "CyberpunkVR_Hands_Shared");
+        SECURITY_ATTRIBUTES sa;
+        sa.nLength = sizeof(sa);
+        sa.bInheritHandle = FALSE;
+        const char* sddl = "D:(A;;GA;;;WD)S:(ML;;NW;;;LW)";
+        PSECURITY_DESCRIPTOR pSD = NULL;
+        if (ConvertStringSecurityDescriptorToSecurityDescriptorA(sddl, SDDL_REVISION_1, &pSD, NULL)) {
+            sa.lpSecurityDescriptor = pSD;
+        } else {
+            sa.lpSecurityDescriptor = NULL;
+        }
+
+        s_hMapFile = CreateFileMappingA(INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE, 0, 256, "CyberpunkVR_Hands_Shared");
+        
+        if (pSD) {
+            LocalFree(pSD);
+        }
         if (s_hMapFile) {
             s_pSharedHands = (float*)MapViewOfFile(s_hMapFile, FILE_MAP_ALL_ACCESS, 0, 0, 256);
         }
