@@ -834,10 +834,10 @@ static float g_ShootOriginX = 0, g_ShootOriginY = 0, g_ShootOriginZ = 0;
 static bool g_ShootOriginSet = false;
 
 // ---- Shoot() hook (RVA 0x659C5C) ----
-typedef void (*Shoot_t)(void* rcx, void* rdx);
+typedef void (*Shoot_t)(void* rcx, void* rdx, void* r8, void* r9);
 static Shoot_t OriginalShoot = nullptr;
 
-extern "C" inline void Hooked_Shoot(void* rcx, void* rdx) {
+extern "C" inline void Hooked_Shoot(void* rcx, void* rdx, void* r8, void* r9) {
     if (g_RaycastTestArmed > 0) {
         Beep(1000, 50);
         g_InsideShoot = 500;
@@ -862,7 +862,7 @@ extern "C" inline void Hooked_Shoot(void* rcx, void* rdx) {
             fclose(f);
         }
     }
-    OriginalShoot(rcx, rdx);
+    OriginalShoot(rcx, rdx, r8, r9);
 }
 
 // ---- PhysX raycast hook (RVA 0x2389CC) ----
@@ -906,17 +906,6 @@ extern "C" inline int Hooked_PhysxRaycast(void* scene, void* rdx, void* r8) {
                 fprintf(f, "  origin:  %.3f, %.3f, %.3f\n", rf[0], rf[1], rf[2]);
                 fprintf(f, "  dir:     %.4f, %.4f, %.4f\n", rf[3], rf[4], rf[5]);
                 fprintf(f, "  [6]=%.2f [7]=%.2f [8]=%.2f [12]=%.2f\n", rf[6], rf[7], rf[8], rf[12]);
-                
-                if (g_RaycastLogCount == 0 && scene) {
-                    uintptr_t vtable = *(uintptr_t*)scene;
-                    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr));
-                    fprintf(f, "  [scene vtable] 0x%llX (RVA 0x%llX):\n", vtable, vtable - base);
-                    uintptr_t* vt = reinterpret_cast<uintptr_t*>(vtable);
-                    for(int i=0; i<15; i++) {
-                        fprintf(f, "    vfunc[%d] = RVA 0x%llX\n", i, vt[i] - base);
-                    }
-                }
-                
                 fprintf(f, "\n");
                 fclose(f);
             }
@@ -942,6 +931,7 @@ extern "C" inline int Hooked_PhysxRaycast(void* scene, void* rdx, void* r8) {
     return OriginalPhysxRaycast(scene, rdx, r8);
 }
 
+
 inline bool InstallRaycastHook() {
     HMODULE hMod = GetModuleHandleA("Cyberpunk2077.exe");
     if (!hMod) return false;
@@ -951,6 +941,7 @@ inline bool InstallRaycastHook() {
         return false;
     if (MH_EnableHook(target) != MH_OK)
         return false;
+        
     return true;
 }
 
