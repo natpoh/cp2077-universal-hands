@@ -118,6 +118,13 @@ volatile uintptr_t g_AnimPoseLastBoneBuf = 0;
 volatile int       g_AnimPoseTestBone = -1;
 volatile float     g_AnimPoseTestMag = 1.0f;
 
+// Raycast hook (SyncRaycastByCollisionGroup at RVA 0x1118008). See vrik_hook.h.
+volatile int       g_RaycastTestArmed = 0;     // 0=off, 1=log+shift, 2=always shift
+volatile int       g_RaycastLogCount = 0;      // how many raycasts were logged
+volatile float     g_RaycastShiftZ = 5.0f;     // meters to shift end.Z
+volatile int       g_InsideShoot = 0;           // 1 while inside Shoot() call
+volatile float     g_MuzzleX = 0, g_MuzzleY = 0, g_MuzzleZ = 0;  // muzzle pos from CET
+
 volatile int       g_VRBind = 4;
 volatile float     g_VRBindScale = 1.0f;
 volatile float     g_VRBindOffX = 0.0f;
@@ -304,8 +311,16 @@ static RED4ext::WeakHandle<RED4ext::IScriptable> g_rightHandEntity;
 void SetVRRightHandEntity(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, void* aOut, int64_t a4) {
     RED4ext::Handle<RED4ext::IScriptable> ent;
     RED4ext::GetParameter(aFrame, &ent);
-    aFrame->code++;
+    aFrame->code++; // skip ParamEnd
     g_rightHandEntity = ent;
+}
+
+void ArmVRCrosshair(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, void* aOut, int64_t a4) {
+    RED4ext::Handle<RED4ext::IScriptable> player;
+    RED4ext::GetParameter(aFrame, &player);
+    aFrame->code++; // skip ParamEnd
+    // Just a stub to prevent REDscript from crashing!
+    // We lost the original function body due to git checkout.
 }
 
 void DumpVRFppComponents(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t a4) {
@@ -920,6 +935,9 @@ static void DumpNameListFiltered(std::ofstream& aOut, const char* aLabel, const 
         }
     }
 }
+
+thread_local bool g_IsShooting = false;
+volatile uint64_t g_PlayerPuppetPtr = 0;
 
 static RED4ext::ent::AnimatedComponent* FindPlayerAnimatedComponentByName(const char* aName)
 {
@@ -3552,8 +3570,10 @@ void Hooked_GetDefaultCrosshairData(RED4ext::IScriptable* aContext, RED4ext::CSt
 bool InstallCrosshairHook() {
     HMODULE hMod = GetModuleHandleA("Cyberpunk2077.exe");
     if (!hMod) return false;
-    void* target = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(hMod) + 0x2512D70);
+    uintptr_t baseAddress = reinterpret_cast<uintptr_t>(hMod);
+    void* target = reinterpret_cast<void*>(baseAddress + 0x2512D70);
     MH_Initialize();
+    
     if (MH_CreateHook(target, (void*)&Hooked_GetDefaultCrosshairData, reinterpret_cast<void**>(&Original_GetDefaultCrosshairData)) != MH_OK) return false;
     if (MH_EnableHook(target) != MH_OK) return false;
     return true;
@@ -3570,7 +3590,37 @@ void InstallVRAnimPoseHook(RED4ext::IScriptable* aContext, RED4ext::CStackFrame*
     // Also install the crosshair hook
     InstallCrosshairHook();
     
+    // Install the raycast hook for hitscan direction control
+    bool rayOk = InstallRaycastHook();
+    bool shootOk = InstallShootHook();
+    if (rayOk) {
+        FILE* f = fopen("raycast_hook_log.txt", "w");
+        if (f) { fprintf(f, "=== Raycast hook at 0x2389CC: %s, Shoot hook at 0x659C5C: %s ===\n\n", rayOk?"OK":"FAIL", shootOk?"OK":"FAIL"); fclose(f); }
+    }
+    
     if (aOut) *aOut = ok ? 1 : 0;
+}
+
+// Arms/disarms the raycast test. mode: 0=off, 1=log+shift one, 2=always shift.
+// Optional second param: shiftZ (default 5.0).
+void ArmRaycastTest(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t a4) {
+    RED4EXT_UNUSED_PARAMETER(aContext); RED4EXT_UNUSED_PARAMETER(a4);
+    int32_t mode = 0;
+    float shiftZ = 5.0f;
+    float mx = 0, my = 0, mz = 0;
+    RED4ext::GetParameter(aFrame, &mode);
+    RED4ext::GetParameter(aFrame, &shiftZ);
+    RED4ext::GetParameter(aFrame, &mx);
+    RED4ext::GetParameter(aFrame, &my);
+    RED4ext::GetParameter(aFrame, &mz);
+    aFrame->code++;
+    
+    g_RaycastTestArmed = mode;
+    g_RaycastShiftZ = shiftZ;
+    g_RaycastLogCount = 0;
+    g_MuzzleX = mx; g_MuzzleY = my; g_MuzzleZ = mz;
+    
+    if (aOut) *aOut = mode;
 }
 
 // Resolves the player's live track buffers (a2[7][3] candidates) so the hook can
@@ -4167,6 +4217,16 @@ void DumpRuntimeClassFunctions(RED4ext::IScriptable* aContext, RED4ext::CStackFr
 }
 
 RED4EXT_C_EXPORT void RED4EXT_CALL PostRegisterTypes() {
+    MH_Initialize();
+
+    uintptr_t baseAddress = reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr));
+
+    // [DISABLED] Old Shoot/Wrapper hooks from previous experiments — functions removed.
+    // uintptr_t OriginalShoot_addr = baseAddress + 0x659C5C;
+    // MH_CreateHook(...Hooked_Shoot...OriginalShoot...);
+    // uintptr_t Wrapper_addr = baseAddress + 0x1320734;
+    // MH_CreateHook(...Hooked_Wrapper...OriginalWrapper...);
+
     auto rtti = RED4ext::CRTTISystem::Get();
     RED4ext::CBaseFunction::Flags flags = {.isNative = true, .isStatic = true};
 
@@ -4253,6 +4313,9 @@ RED4EXT_C_EXPORT void RED4EXT_CALL PostRegisterTypes() {
     auto f15j = RED4ext::CGlobalFunction::Create("InstallVRAnimPoseHook", "InstallVRAnimPoseHook", &InstallVRAnimPoseHook);
     f15j->flags = flags; f15j->SetReturnType("Int32"); rtti->RegisterFunction(f15j);
 
+    auto fRay = RED4ext::CGlobalFunction::Create("ArmRaycastTest", "ArmRaycastTest", &ArmRaycastTest);
+    fRay->flags = flags; fRay->SetReturnType("Int32"); fRay->AddParam("Int32", "mode"); fRay->AddParam("Float", "shiftZ"); fRay->AddParam("Float", "muzzleX"); fRay->AddParam("Float", "muzzleY"); fRay->AddParam("Float", "muzzleZ"); rtti->RegisterFunction(fRay);
+
     auto f15k = RED4ext::CGlobalFunction::Create("ArmVRAnimPosePlayer", "ArmVRAnimPosePlayer", &ArmVRAnimPosePlayer);
     f15k->flags = flags; f15k->SetReturnType("Int32"); rtti->RegisterFunction(f15k);
 
@@ -4295,6 +4358,12 @@ RED4EXT_C_EXPORT void RED4EXT_CALL PostRegisterTypes() {
     f15r->flags = flags; f15r->SetReturnType("Int32"); 
     f15r->AddParam("Int32", "leftIdx"); f15r->AddParam("Int32", "rightIdx");
     rtti->RegisterFunction(f15r);
+
+    auto fArmCrosshair = RED4ext::CGlobalFunction::Create("ArmVRCrosshair", "ArmVRCrosshair", &ArmVRCrosshair);
+    fArmCrosshair->flags = flags;
+    fArmCrosshair->SetReturnType("Void");
+    fArmCrosshair->AddParam("handle:PlayerPuppet", "player"); // or whatever type
+    rtti->RegisterFunction(fArmCrosshair);
 
     auto f15rH = RED4ext::CGlobalFunction::Create("SetVRHeadBone", "SetVRHeadBone", &SetVRHeadBone);
     f15rH->flags = flags; f15rH->SetReturnType("Int32"); f15rH->AddParam("Int32", "index"); rtti->RegisterFunction(f15rH);

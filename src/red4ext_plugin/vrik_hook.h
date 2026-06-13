@@ -155,6 +155,7 @@ extern volatile uint64_t  g_AnimPoseMatchCalls;
 extern volatile uintptr_t g_AnimPoseLastBoneBuf; // last matched player bone buffer (debug)
 extern volatile int       g_AnimPoseTestBone;    // single-bone test index (mode 2)
 extern volatile float     g_AnimPoseTestMag;     // single-bone test magnitude (mode 2)
+extern volatile uintptr_t g_PlayerPuppetPtr;     // Pointer to PlayerPuppet instance
 
 // VR hand binding: write VR controller pose into the hand bones each frame.
 extern UniversalTrackingData* g_pBodyWalkTracking;
@@ -583,6 +584,31 @@ extern "C" inline void* Hooked_AnimPoseApply(void* a1, void* a2, void* a3, unsig
     // every frame). Do nothing unless the player is armed AND we actually have work.
     // No VirtualQuery here -- that syscall per call was the FPS killer. a2 is always
     // a valid pose-apply argument, so a single __try guards the dereferences.
+
+    // -------------------------------------------------------------
+    // OPTION B: OVERRIDE CROSSHAIR DATA IN TARGETING SYSTEM
+    // -------------------------------------------------------------
+    if (g_PlayerPuppetPtr) {
+        __try {
+            uintptr_t targetSys = *(uintptr_t*)(g_PlayerPuppetPtr + 0x30CC8);
+            if (targetSys) {
+                // +0x350 is Vector4 Position, +0x370 is Vector4 Forward
+                float* pos = reinterpret_cast<float*>(targetSys + 0x350);
+                float* fwd = reinterpret_cast<float*>(targetSys + 0x370);
+                
+                // TEST: Shoot straight UP (Z = 1.0) and move origin 10 meters up
+                // to see if bullets go up into the sky from 10m above
+                pos[2] += 10.0f; // Z += 10
+                
+                fwd[0] = 0.0f; // X
+                fwd[1] = 0.0f; // Y
+                fwd[2] = 1.0f; // Z (UP)
+                fwd[3] = 0.0f; // W
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {}
+    }
+    // -------------------------------------------------------------
+
     if (!(g_PlayerTrackBufA || g_PlayerTrackBufB)) return result;
     if (g_VRBind <= 0 && g_AnimPoseDebug == 0 && g_VRDiagCapture == 0) return result;
 
@@ -763,6 +789,177 @@ inline bool InstallAnimPoseHook() {
     void* target = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(hMod) + 0x17DDB4);
     MH_Initialize(); // no-op if already initialized by InstallVRIKMinHook
     if (MH_CreateHook(target, &Hooked_AnimPoseApply, reinterpret_cast<void**>(&OriginalAnimPose)) != MH_OK)
+        return false;
+    if (MH_EnableHook(target) != MH_OK)
+        return false;
+    return true;
+}
+
+// ============================================================================
+// RAYCAST HOOK: PhysX raycast (RVA 0x1A459C)
+// ============================================================================
+//
+// This is the BOTTOM of all raycast paths. 58 callers converge here.
+// 0x1118008 (SyncRaycastByCollisionGroup native) was NOT called during
+// hitscan because Shoot() uses a different call chain to reach PhysX.
+// Hooking 0x1A459C catches ALL raycasts including hitscan.
+//
+// Calling convention (from disasm):
+//   ecx = scene handle (32-bit, moved from original rcx param)
+//   rdx = rayData* (struct with start/end floats)
+//   r8  = TraceResult*
+//   return: depends on caller's interpretation
+//
+// Inside the function:
+//   0x1A459C: sub rsp, 0x28
+//   0x1A45A0: mov r11, rdx     ; save rayData
+//   0x1A45A3: mov r10, r8      ; save TraceResult
+//   0x1A45A6: mov edx, ecx     ; scene handle -> edx
+//   0x1A45A8: mov rcx, [rip+X] ; get physics world
+//   0x1A45AF: call 0x23EA70    ; resolve scene
+//   0x1A45B7: mov rdx, r11     ; restore rayData
+//   0x1A45BA: mov rcx, rax     ; resolved scene
+//   0x1A45C1: jmp 0x2389CC     ; tail-call to actual physx query
+// ============================================================================
+
+// Control flags — set via CET bridge or RED4ext scripting.
+extern volatile int g_RaycastTestArmed;  // 0=off, 1=log+shift next shot, 2=always shift
+extern volatile int g_RaycastLogCount;   // how many raycasts were logged
+extern volatile float g_RaycastShiftZ;
+extern volatile int g_InsideShoot;
+extern volatile float g_MuzzleX, g_MuzzleY, g_MuzzleZ;  // muzzle pos from CET
+
+// Saved player origin from first raycast near player
+static float g_ShootOriginX = 0, g_ShootOriginY = 0, g_ShootOriginZ = 0;
+static bool g_ShootOriginSet = false;
+
+// ---- Shoot() hook (RVA 0x659C5C) ----
+typedef void (*Shoot_t)(void* rcx, void* rdx);
+static Shoot_t OriginalShoot = nullptr;
+
+extern "C" inline void Hooked_Shoot(void* rcx, void* rdx) {
+    if (g_RaycastTestArmed > 0) {
+        Beep(1000, 50);
+        g_InsideShoot = 500;
+        g_RaycastLogCount = 0;
+        g_ShootOriginSet = false;  // reset auto-detect
+        
+        FILE* f = fopen("raycast_hook_log.txt", "a");
+        if (f) {
+            fprintf(f, "=== SHOOT! muzzle=(%.1f, %.1f, %.1f) ===\n", 
+                (float)g_MuzzleX, (float)g_MuzzleY, (float)g_MuzzleZ);
+            
+            // Dump rdx (shoot params) — compact
+            if (rdx) {
+                float* p = reinterpret_cast<float*>(rdx);
+                fprintf(f, "[rdx params]:\n");
+                for (int i = 0; i < 64; i++) {
+                    if (p[i] != 0.0f && !std::isnan(p[i]) && !std::isinf(p[i]))
+                        fprintf(f, "  [%02d]+0x%03X = %.4f\n", i, i*4, p[i]);
+                }
+            }
+            fprintf(f, "\n");
+            fclose(f);
+        }
+    }
+    OriginalShoot(rcx, rdx);
+}
+
+// ---- PhysX raycast hook (RVA 0x2389CC) ----
+typedef int (*PhysxRaycast_t)(void* scene, void* rdx, void* r8);
+static PhysxRaycast_t OriginalPhysxRaycast = nullptr;
+
+extern "C" inline int Hooked_PhysxRaycast(void* scene, void* rdx, void* r8) {
+    if (g_InsideShoot > 0 && rdx) {
+        float* rf = reinterpret_cast<float*>(rdx);
+        --g_InsideShoot;
+        
+        float dirZ = rf[5];
+        if (dirZ <= -0.9f) goto done;
+        
+        // Use muzzle pos from CET if available, else auto-detect
+        float refX = g_MuzzleX, refY = g_MuzzleY, refZ = g_MuzzleZ;
+        if (refX == 0.f && refY == 0.f && refZ == 0.f) {
+            // Fallback: use first horizontal ray origin
+            if (!g_ShootOriginSet) {
+                g_ShootOriginX = rf[0]; g_ShootOriginY = rf[1]; g_ShootOriginZ = rf[2];
+                g_ShootOriginSet = true;
+            }
+            refX = g_ShootOriginX; refY = g_ShootOriginY; refZ = g_ShootOriginZ;
+        }
+        
+        float dx = rf[0] - refX;
+        float dy = rf[1] - refY;
+        float dz = rf[2] - refZ;
+        float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+        
+        if (dist < 5.0f && g_RaycastLogCount < 50) {
+            uintptr_t retAddr = reinterpret_cast<uintptr_t>(_ReturnAddress());
+            uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr));
+            uintptr_t retRVA = retAddr - base;
+            const char* src = (retRVA == 0xB43009) ? "BATCH" : "WRAP";
+            
+            FILE* f = fopen("raycast_hook_log.txt", "a");
+            if (f) {
+                fprintf(f, "[PLAYER_RAY #%d] src=%s pending=%d dist=%.1f\n",
+                    (int)g_RaycastLogCount, src, (int)g_InsideShoot, dist);
+                fprintf(f, "  origin:  %.3f, %.3f, %.3f\n", rf[0], rf[1], rf[2]);
+                fprintf(f, "  dir:     %.4f, %.4f, %.4f\n", rf[3], rf[4], rf[5]);
+                fprintf(f, "  [6]=%.2f [7]=%.2f [8]=%.2f [12]=%.2f\n", rf[6], rf[7], rf[8], rf[12]);
+                
+                if (g_RaycastLogCount == 0 && scene) {
+                    uintptr_t vtable = *(uintptr_t*)scene;
+                    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr));
+                    fprintf(f, "  [scene vtable] 0x%llX (RVA 0x%llX):\n", vtable, vtable - base);
+                    uintptr_t* vt = reinterpret_cast<uintptr_t*>(vtable);
+                    for(int i=0; i<15; i++) {
+                        fprintf(f, "    vfunc[%d] = RVA 0x%llX\n", i, vt[i] - base);
+                    }
+                }
+                
+                fprintf(f, "\n");
+                fclose(f);
+            }
+            ++g_RaycastLogCount;
+        }
+        
+        // Modification: shift direction dynamically when armed >= 2
+        if (g_RaycastTestArmed >= 2 && dist < 5.0f && dirZ > -0.9f) {
+            // Use the shiftZ parameter passed from CET (default 5.0)
+            // Let's add it to Z (up/down) as it's the most visible change
+            rf[5] += g_RaycastShiftZ; 
+            
+            // Normalize the new direction vector
+            float len = std::sqrt(rf[3]*rf[3] + rf[4]*rf[4] + rf[5]*rf[5]);
+            if (len > 0.0001f) {
+                rf[3] /= len;
+                rf[4] /= len;
+                rf[5] /= len;
+            }
+        }
+    }
+    done:
+    return OriginalPhysxRaycast(scene, rdx, r8);
+}
+
+inline bool InstallRaycastHook() {
+    HMODULE hMod = GetModuleHandleA("Cyberpunk2077.exe");
+    if (!hMod) return false;
+    void* target = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(hMod) + 0x2389CC);
+    MH_Initialize();
+    if (MH_CreateHook(target, (void*)&Hooked_PhysxRaycast, reinterpret_cast<void**>(&OriginalPhysxRaycast)) != MH_OK)
+        return false;
+    if (MH_EnableHook(target) != MH_OK)
+        return false;
+    return true;
+}
+
+inline bool InstallShootHook() {
+    HMODULE hMod = GetModuleHandleA("Cyberpunk2077.exe");
+    if (!hMod) return false;
+    void* target = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(hMod) + 0x659C5C);
+    MH_Initialize();
+    if (MH_CreateHook(target, (void*)&Hooked_Shoot, reinterpret_cast<void**>(&OriginalShoot)) != MH_OK)
         return false;
     if (MH_EnableHook(target) != MH_OK)
         return false;
