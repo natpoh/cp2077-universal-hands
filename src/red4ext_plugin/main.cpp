@@ -3541,6 +3541,24 @@ void GetPlayerBoneBufferAddress(RED4ext::IScriptable* aContext, RED4ext::CStackF
 
 // ---- Pose-apply hook (sub_14017DDB4) control ----
 
+typedef void (*ScriptingFunction_t)(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, void* aOut, int64_t a4);
+ScriptingFunction_t Original_GetDefaultCrosshairData = nullptr;
+
+void Hooked_GetDefaultCrosshairData(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, void* aOut, int64_t a4) {
+    Original_GetDefaultCrosshairData(aContext, aFrame, aOut, a4);
+    Beep(750, 100);
+}
+
+bool InstallCrosshairHook() {
+    HMODULE hMod = GetModuleHandleA("Cyberpunk2077.exe");
+    if (!hMod) return false;
+    void* target = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(hMod) + 0x2512D70);
+    MH_Initialize();
+    if (MH_CreateHook(target, (void*)&Hooked_GetDefaultCrosshairData, reinterpret_cast<void**>(&Original_GetDefaultCrosshairData)) != MH_OK) return false;
+    if (MH_EnableHook(target) != MH_OK) return false;
+    return true;
+}
+
 // Installs the MinHook on the pose-apply function (module+0x17DDB4).
 void InstallVRAnimPoseHook(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t a4) {
     RED4EXT_UNUSED_PARAMETER(aContext); RED4EXT_UNUSED_PARAMETER(a4);
@@ -3548,6 +3566,10 @@ void InstallVRAnimPoseHook(RED4ext::IScriptable* aContext, RED4ext::CStackFrame*
     // Only the pose-apply hook is installed; the ComponentFunc21 hook is dead code
     // that crushed FPS (see UpdateVRIKAnimInputs note).
     bool ok = InstallAnimPoseHook();
+    
+    // Also install the crosshair hook
+    InstallCrosshairHook();
+    
     if (aOut) *aOut = ok ? 1 : 0;
 }
 
@@ -4444,6 +4466,11 @@ RED4EXT_C_EXPORT void RED4EXT_CALL PostRegisterTypes() {
     auto f50 = RED4ext::CGlobalFunction::Create("DumpRootMetaRigTracks", "DumpRootMetaRigTracks", &DumpRootMetaRigTracks);
     f50->flags = flags; f50->SetReturnType("Int32");
     rtti->RegisterFunction(f50);
+
+    auto fTwist = RED4ext::CGlobalFunction::Create("SetVRTorsoTwist", "SetVRTorsoTwist", &SetVRBindMode); // Используем SetVRBindMode как заглушку, так как сигнатуры совпадают (Int32) -> Int32
+    fTwist->flags = flags; fTwist->SetReturnType("Int32");
+    fTwist->AddParam("Int32", "mode");
+    rtti->RegisterFunction(fTwist);
 
     auto f51 = RED4ext::CGlobalFunction::Create("TestRootMetaRigTrackPreset", "TestRootMetaRigTrackPreset", &TestRootMetaRigTrackPreset);
     f51->flags = flags; f51->SetReturnType("Int32");
