@@ -3590,12 +3590,11 @@ void InstallVRAnimPoseHook(RED4ext::IScriptable* aContext, RED4ext::CStackFrame*
     // Also install the crosshair hook
     InstallCrosshairHook();
     
-    // Install the raycast hook for hitscan direction control
-    bool rayOk = InstallRaycastHook();
+    // Install the Shoot hook for hitscan direction control
     bool shootOk = InstallShootHook();
-    if (rayOk) {
+    if (shootOk) {
         FILE* f = fopen("raycast_hook_log.txt", "w");
-        if (f) { fprintf(f, "=== Raycast hook at 0x2389CC: %s, Shoot hook at 0x659C5C: %s ===\n\n", rayOk?"OK":"FAIL", shootOk?"OK":"FAIL"); fclose(f); }
+        if (f) { fprintf(f, "=== Shoot hook at 0x659C5C: %s ===\n\n", shootOk?"OK":"FAIL"); fclose(f); }
     }
     
     if (aOut) *aOut = ok ? 1 : 0;
