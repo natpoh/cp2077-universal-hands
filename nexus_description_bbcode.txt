@@ -47,6 +47,7 @@ It features a full CET-based in-game UI to calibrate offsets, adjust arm reach, 
 [*]Go to the [b]Main[/b] tab and make sure [b]Lock HMD position to center[/b] is CHECKED.
 [*]Go to the [b]Mapping[/b] tab and ensure your Tracking Input is set to [b]OpenXR[/b] (or your preferred tracker).
 [*]Go to the [b]Startup[/b] tab and ensure [b]Enable Universal Tracking Output[/b] is CHECKED.
+[*]Go to the [b]Plugins[/b] tab, make sure the Cyberpunk plugin is checked/enabled, and verify its status says "Connected".
 [/list]
 
 [b]Step 2: Launch Cyberpunk 2077[/b]
