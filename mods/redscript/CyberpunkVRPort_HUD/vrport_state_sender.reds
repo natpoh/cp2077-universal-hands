@@ -1,54 +1,71 @@
 public native func SendCP2077StateToBodyWalk(stateName: String)
 
+public class BodyWalkPingEvent extends Event {}
+
 @addField(PlayerPuppet)
-public let bodyWalkLastNonMenuState: String;
+public let bodyWalkPingDelayId: DelayID;
 
 @addField(PlayerPuppet)
 public let bodyWalkIsInMenu: Bool;
 
-@addMethod(PlayerPuppet)
-public func SetBodyWalkState(stateName: String) {
-    this.bodyWalkLastNonMenuState = stateName;
-    if !this.bodyWalkIsInMenu {
-        let fullState = stateName + "," + this.GetBodyWalkWeaponCategory();
-        SendCP2077StateToBodyWalk(fullState);
-    }
+@wrapMethod(PlayerPuppet)
+protected cb func OnGameAttached() -> Bool {
+    let result = wrappedMethod();
+    this.StartBodyWalkPingLoop();
+    return result;
 }
 
 @wrapMethod(PlayerPuppet)
-protected cb func OnCombatStateChanged(state: Int32) -> Bool {
-    let result = wrappedMethod(state);
-    // 0 = Out of combat, 1 = In combat, 2 = Stealth
-    if state == 1 {
-        this.SetBodyWalkState("combat");
-    } else {
-        this.SetBodyWalkState("main");
-    }
+protected cb func OnDetach() -> Bool {
+    let result = wrappedMethod();
+    this.StopBodyWalkPingLoop();
     return result;
 }
 
-@wrapMethod(VehicleComponent)
-protected cb func OnVehicleFinishedMountingEvent(evt: ref<VehicleFinishedMountingEvent>) -> Bool {
-    let result = wrappedMethod(evt);
-    let character: ref<GameObject> = evt.character as GameObject;
-    let player = character as PlayerPuppet;
-    if IsDefined(player) && evt.isMounting {
-        player.SetBodyWalkState("vehicle");
-    }
-    return result;
+@addMethod(PlayerPuppet)
+public func StartBodyWalkPingLoop() {
+    let evt = new BodyWalkPingEvent();
+    this.bodyWalkPingDelayId = GameInstance.GetDelaySystem(this.GetGame()).DelayEvent(this, evt, 0.5, false);
 }
 
-@wrapMethod(VehicleComponent)
-protected cb func OnUnmountingEvent(evt: ref<UnmountingEvent>) -> Bool {
-    let result = wrappedMethod(evt);
-    let game: GameInstance = this.GetVehicle().GetGame();
-    let childId: EntityID = evt.request.lowLevelMountingInfo.childId;
-    let mountChild: ref<GameObject> = GameInstance.FindEntityByID(game, childId) as GameObject;
-    let player = mountChild as PlayerPuppet;
-    if IsDefined(player) {
-        player.SetBodyWalkState("main");
+@addMethod(PlayerPuppet)
+public func StopBodyWalkPingLoop() {
+    GameInstance.GetDelaySystem(this.GetGame()).CancelDelay(this.bodyWalkPingDelayId);
+}
+
+@addMethod(PlayerPuppet)
+protected cb func OnBodyWalkPingEvent(evt: ref<BodyWalkPingEvent>) -> Bool {
+    this.EvaluateAndPingBodyWalkState();
+    
+    let nextEvt = new BodyWalkPingEvent();
+    this.bodyWalkPingDelayId = GameInstance.GetDelaySystem(this.GetGame()).DelayEvent(this, nextEvt, 0.5, false);
+    return true;
+}
+
+@addMethod(PlayerPuppet)
+public func EvaluateAndPingBodyWalkState() {
+    if this.bodyWalkIsInMenu {
+        SendCP2077StateToBodyWalk("menu");
+        return;
     }
-    return result;
+
+    let psmBlackboard = this.GetPlayerStateMachineBlackboard();
+    let stateName = "main";
+
+    if IsDefined(psmBlackboard) {
+        let combatState = psmBlackboard.GetInt(GetAllBlackboardDefs().PlayerStateMachine.Combat);
+        let vehicleState = psmBlackboard.GetInt(GetAllBlackboardDefs().PlayerStateMachine.Vehicle);
+
+        if vehicleState > 0 {
+            stateName = "vehicle";
+        } 
+        else if combatState == 1 {
+            stateName = "combat";
+        }
+    }
+
+    let fullState = stateName + "," + this.GetBodyWalkWeaponCategory();
+    SendCP2077StateToBodyWalk(fullState);
 }
 
 @wrapMethod(PopupsManager)
@@ -62,12 +79,7 @@ protected cb func OnMenuUpdate(isInMenu: Bool) -> Bool {
             if isInMenu {
                 SendCP2077StateToBodyWalk("menu");
             } else {
-                let lastState = player.bodyWalkLastNonMenuState;
-                if Equals(lastState, "") {
-                    lastState = "main";
-                }
-                let fullState = lastState + "," + player.GetBodyWalkWeaponCategory();
-                SendCP2077StateToBodyWalk(fullState);
+                player.EvaluateAndPingBodyWalkState();
             }
         }
     }
@@ -77,34 +89,18 @@ protected cb func OnMenuUpdate(isInMenu: Bool) -> Bool {
 @addMethod(PlayerPuppet)
 public final func GetBodyWalkWeaponCategory() -> String {
     let weapon = ScriptedPuppet.GetWeaponRight(this);
-    if !IsDefined(weapon) {
-        return "unarmed";
-    }
+    if !IsDefined(weapon) { return "unarmed"; }
     let weaponRecord = weapon.GetWeaponRecord();
-    if !IsDefined(weaponRecord) {
-        return "unarmed";
-    }
+    if !IsDefined(weaponRecord) { return "unarmed"; }
     let itemTypeRecord = weaponRecord.ItemType();
-    if !IsDefined(itemTypeRecord) {
-        return "unarmed";
-    }
+    if !IsDefined(itemTypeRecord) { return "unarmed"; }
     let type = itemTypeRecord.Type();
     
-    if Equals(type, gamedataItemType.Wea_Fists) || Equals(type, gamedataItemType.Cyb_StrongArms) {
-        return "unarmed";
-    }
-    if Equals(type, gamedataItemType.Wea_Handgun) || Equals(type, gamedataItemType.Wea_Revolver) {
-        return "pistols";
-    }
-    if Equals(type, gamedataItemType.Wea_Shotgun) || Equals(type, gamedataItemType.Wea_ShotgunDual) {
-        return "shotguns";
-    }
-    if Equals(type, gamedataItemType.Wea_AssaultRifle) || Equals(type, gamedataItemType.Wea_Rifle) || Equals(type, gamedataItemType.Wea_SubmachineGun) || Equals(type, gamedataItemType.Wea_SniperRifle) || Equals(type, gamedataItemType.Wea_PrecisionRifle) {
-        return "rifles";
-    }
-    if Equals(type, gamedataItemType.Wea_HeavyMachineGun) || Equals(type, gamedataItemType.Wea_LightMachineGun) || Equals(type, gamedataItemType.Wea_GrenadeLauncher) || Equals(type, gamedataItemType.Cyb_Launcher) {
-        return "heavy";
-    }
+    if Equals(type, gamedataItemType.Wea_Fists) || Equals(type, gamedataItemType.Cyb_StrongArms) { return "unarmed"; }
+    if Equals(type, gamedataItemType.Wea_Handgun) || Equals(type, gamedataItemType.Wea_Revolver) { return "pistols"; }
+    if Equals(type, gamedataItemType.Wea_Shotgun) || Equals(type, gamedataItemType.Wea_ShotgunDual) { return "shotguns"; }
+    if Equals(type, gamedataItemType.Wea_AssaultRifle) || Equals(type, gamedataItemType.Wea_Rifle) || Equals(type, gamedataItemType.Wea_SubmachineGun) || Equals(type, gamedataItemType.Wea_SniperRifle) || Equals(type, gamedataItemType.Wea_PrecisionRifle) { return "rifles"; }
+    if Equals(type, gamedataItemType.Wea_HeavyMachineGun) || Equals(type, gamedataItemType.Wea_LightMachineGun) || Equals(type, gamedataItemType.Wea_GrenadeLauncher) || Equals(type, gamedataItemType.Cyb_Launcher) { return "heavy"; }
     return "melee";
 }
 
@@ -112,11 +108,7 @@ public final func GetBodyWalkWeaponCategory() -> String {
 public final func OnItemEquipped(slot: TweakDBID, item: ItemID) -> Void {
     wrappedMethod(slot, item);
     if slot == t"AttachmentSlots.WeaponRight" {
-        let lastState = this.bodyWalkLastNonMenuState;
-        if Equals(lastState, "") {
-            lastState = "main";
-        }
-        this.SetBodyWalkState(lastState);
+        this.EvaluateAndPingBodyWalkState();
     }
 }
 
@@ -124,10 +116,6 @@ public final func OnItemEquipped(slot: TweakDBID, item: ItemID) -> Void {
 public final func OnItemUnequipped(slot: TweakDBID, item: ItemID) -> Void {
     wrappedMethod(slot, item);
     if slot == t"AttachmentSlots.WeaponRight" {
-        let lastState = this.bodyWalkLastNonMenuState;
-        if Equals(lastState, "") {
-            lastState = "main";
-        }
-        this.SetBodyWalkState(lastState);
+        this.EvaluateAndPingBodyWalkState();
     }
 }

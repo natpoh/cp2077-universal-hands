@@ -3,7 +3,7 @@
 [size=5][b]Description[/b][/size]
 [b]Cyberpunk Universal Hands VR[/b] is a powerful, [b]100% free[/b] RED4ext and Cyber Engine Tweaks (CET) plugin that allows seamless external injection of VR hand tracking into Cyberpunk 2077's first-person animations. 
 
-[i]Please note: This project is a completely free and open-source fork based on the original [b]CyberpunkVRPort[/b] by dariulone ([url=https://github.com/dariulone/cyberpunk-vr-port]GitHub[/url]).[/i]
+[i]Please note: This project is a completely free and open-source fork based on the original [b]CyberpunkVRPort[/b] by dariulone ([url=https://github.com/dariulone/cyberpunk-vr-port]GitHub[/url]). It is fully compatible with the original VR port plugin and can be used for movement.[/i]
 
 Originally built as a companion to [b]BodyWalkVR[/b], this mod uses a high-performance Shared Memory interface to read VR controller positions and rotations (from OpenXR, SteamVR, or custom tracking solutions) and applies them directly to the in-game player skeleton (VRIK) in real-time.
 
@@ -24,7 +24,7 @@ It features a full CET-based in-game UI to calibrate offsets, adjust arm reach, 
 [*][url=https://www.nexusmods.com/cyberpunk2077/mods/107]Cyber Engine Tweaks (CET)[/url]
 [*][url=https://www.nexusmods.com/cyberpunk2077/mods/2380]RED4ext[/url]
 [*][url=https://www.nexusmods.com/cyberpunk2077/mods/4885]Mod Settings[/url]
-[*][i]Optional but recommended:[/i] A VR Mod (like the LukeRoss VR mod) to view the hands in VR.
+[*][i]Highly Recommended:[/i] A VR Mod (like the LukeRoss VR mod or similar OpenXR VR mods). This mod is primarily designed to be played in true VR! However, if you don't have a VR mod, you can use BodyWalkVR's "FlatVR" feature (see instructions below).
 [*][i]A Tracking Provider:[/i] You need a program (like BodyWalkVR) to write your controller positions to the shared memory map, otherwise the hands will fall back to default animations.
 [/list]
 
@@ -35,6 +35,8 @@ It features a full CET-based in-game UI to calibrate offsets, adjust arm reach, 
 [*]Ensure you have [b]CET[/b] and [b]RED4ext[/b] installed and working.
 [*]Extract the contents of the mod [font=Courier New].zip[/font] file into your main Cyberpunk 2077 game directory.
 [*]The folder structure should merge with your [font=Courier New]bin/x64/plugins/[/font] (for RED4ext) and [font=Courier New]bin/x64/plugins/cyber_engine_tweaks/mods/[/font] (for the CET UI).
+[*][b]CRITICAL:[/b] Download the [b]Cyberpunk Plugin for BodyWalkVR[/b] ([font=Courier New]cp2077_bridge.dll[/font]) directly from [url=https://github.com/natpoh/cp2077-universal-hands/raw/main/bodywalk_plugin_bin/cp2077_bridge.dll]here[/url].
+[*]Do [b]NOT[/b] put this plugin in the game folder! Instead, copy it into your [b]BodyWalkVR `plugins` folder[/b] (usually [i]C:\Program Files\BodyWalkVR\plugins[/i]).
 [/list]
 
 [size=5][b]🚀 Step-by-Step Startup Guide[/b][/size]
@@ -62,6 +64,19 @@ It features a full CET-based in-game UI to calibrate offsets, adjust arm reach, 
 [*][b]CRITICAL STEP:[/b] BodyWalkVR acts as a virtual keyboard and gamepad emulator. You must click back into the Cyberpunk 2077 game window so it is completely [b]in focus[/b], otherwise the hand tracking will NOT register!
 [*]Use the sliders in the CET overlay to adjust your hand offsets so that the in-game hands align perfectly with your physical controllers.
 [*][i](The calibration settings are automatically saved and will load on your next session!)[/i]
+[/list]
+
+[size=5][b]🎮 Playing without a VR Mod (FlatVR + ReShade)[/b][/size]
+If you don't use LukeRoss or other VR mods, you can still play with this mod using BodyWalkVR's built-in [b]FlatVR[/b] function! Here is how to set it up:
+
+[list=1]
+[*]Go to your BodyWalkVR installation folder and open [font=Courier New]plugins\reshade_addon[/font].
+[*]Run the [font=Courier New]ReShade_Setup_6.7.3_Addon.exe[/font] installer and select your Cyberpunk 2077 game executable.
+[*]Copy the [font=Courier New]BodyWalkVR_DepthProvider.addon64[/font] file into the same folder as your Cyberpunk game executable.
+[*]Launch Cyberpunk 2077, press [b]F10[/b] to open ReShade, and select the 3D texture for ReShade. Make sure the BodyWalkVR plugin is loaded in the "Add-ons" tab!
+[*]In the BodyWalkVR app, select the game profile and press [b]Start FlatVR[/b].
+[*]Check the [b]Enable ReShade[/b] box.
+[*]Adjust the screen size, mouse control, and 3D depth parameters to whatever feels comfortable for you!
 [/list]
 
 [size=5][b]For Developers (Open Source)[/b][/size]

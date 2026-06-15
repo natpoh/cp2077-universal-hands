@@ -10,7 +10,17 @@ local cfg = {
     poleL = 0.0, poleR = 0.0,
     pitchL = 180.0, yawL = 270.0, rollL = 0.0,
     pitchR = 0.0, yawR = 270.0, rollR = 0.0,
+    yawComp = 50.0,
 }
+
+local isOriginalModPresent = false
+local function CheckOriginalMod()
+    local f = io.open("plugins/cyber_engine_tweaks/mods/CyberpunkVRPort_VRIK/init.lua", "r")
+    if f then
+        isOriginalModPresent = true
+        f:close()
+    end
+end
 
 local function LoadConfig()
     local file = io.open("config.json", "r")
@@ -53,7 +63,10 @@ local function applyCalibration()
     pcall(function() Game.SetVRHandOffset(cfg.pitchL, cfg.yawL, cfg.rollL, 1) end)
     pcall(function() Game.SetVRHandOffset(cfg.pitchR, cfg.yawR, cfg.rollR, 0) end)
 
-    if cfg.enabled then
+    local yawCoef = (cfg.yawComp - 50.0) / 100.0 + 1.0
+    pcall(function() Game.SetVRYawCompensation(yawCoef) end)
+
+    if cfg.enabled and not isOriginalModPresent then
         pcall(function() Game.InstallVRAnimPoseHook() end)
         pcall(function() Game.ArmVRAnimPosePlayer() end)
         pcall(function() Game.SetVRBindMode(4) end)
@@ -85,10 +98,22 @@ registerForEvent("onDraw", function()
             ImGui.TextColored(1.0, 0.3, 0.3, 1.0, "Shared Memory: NOT CONNECTED")
         end
 
-        local cEnabled, toggled = ImGui.Checkbox("Enable Universal Hands", cfg.enabled)
-        if toggled then
-            cfg.enabled = cEnabled
-            changed = true
+        if isOriginalModPresent then
+            ImGui.TextColored(1.0, 0.2, 0.2, 1.0, "cyberpunk-vr-port is ACTIVE!")
+            ImGui.TextColored(1.0, 0.5, 0.2, 1.0, "Our mod is working purely as a tracking bridge (Universal Hands are disabled).")
+            ImGui.Separator()
+        else
+            local cEnabled, toggled = ImGui.Checkbox("Enable Universal Hands", cfg.enabled)
+            if toggled then
+                cfg.enabled = cEnabled
+                changed = true
+            end
+
+            local yComp, cComp = ImGui.SliderFloat("Yaw Compensation", cfg.yawComp, 0.0, 100.0)
+            if cComp then
+                cfg.yawComp = yComp
+                changed = true
+            end
         end
 
         ImGui.Separator()
@@ -134,9 +159,11 @@ registerForEvent("onDraw", function()
     ImGui.End()
 end)
 
-registerForEvent("onInit", function()
+registerForEvent('onInit', function()
     isReady = true
     LoadConfig()
+    CheckOriginalMod()
+    -- Apply initially
     applyCalibration()
 
     registerHotkey("ToggleUniversalHands", "Toggle Universal Hands", function()

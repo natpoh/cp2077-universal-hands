@@ -3,7 +3,7 @@
 ## Description
 **Cyberpunk Universal Hands VR** is a powerful, **100% free** RED4ext and Cyber Engine Tweaks (CET) plugin that allows seamless external injection of VR hand tracking into Cyberpunk 2077's first-person animations. 
 
-*Please note: This project is a completely free and open-source fork based on the original **CyberpunkVRPort** by dariulone ([GitHub](https://github.com/dariulone/cyberpunk-vr-port)).*
+*Please note: This project is a completely free and open-source fork based on the original **CyberpunkVRPort** by dariulone ([GitHub](https://github.com/dariulone/cyberpunk-vr-port)). It is fully compatible with the original VR port plugin and can be used for movement.*
 
 Originally built as a companion to **BodyWalkVR**, this mod uses a high-performance Shared Memory interface to read VR controller positions and rotations (from OpenXR, SteamVR, or custom tracking solutions) and applies them directly to the in-game player skeleton (VRIK) in real-time.
 

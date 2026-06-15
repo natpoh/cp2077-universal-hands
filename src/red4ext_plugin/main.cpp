@@ -3892,6 +3892,17 @@ void SetVRPlayerYaw(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame
     if (aOut) *aOut = 1;
 }
 
+volatile float g_VRYawCompensation = 1.0f;
+
+void SetVRYawCompensation(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t a4) {
+    RED4EXT_UNUSED_PARAMETER(aContext); RED4EXT_UNUSED_PARAMETER(a4);
+    float comp = 1.0f;
+    RED4ext::GetParameter(aFrame, &comp);
+    aFrame->code++;
+    g_VRYawCompensation = comp;
+    if (aOut) *aOut = 1;
+}
+
 void SetVRBindMode(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t a4) {
     int32_t mode = 0;
     RED4ext::GetParameter(aFrame, &mode);
@@ -4675,6 +4686,11 @@ RED4EXT_C_EXPORT void RED4EXT_CALL PostRegisterTypes() {
     fState->flags = flags;
     fState->AddParam("String", "stateName");
     rtti->RegisterFunction(fState);
+
+    auto fYawComp = RED4ext::CGlobalFunction::Create("SetVRYawCompensation", "SetVRYawCompensation", &SetVRYawCompensation);
+    fYawComp->flags = flags; fYawComp->SetReturnType("Int32");
+    fYawComp->AddParam("Float", "comp");
+    rtti->RegisterFunction(fYawComp);
 }
 
 RED4EXT_C_EXPORT void RED4EXT_CALL RegisterTypes() {}

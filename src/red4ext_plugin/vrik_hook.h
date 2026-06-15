@@ -233,10 +233,9 @@ extern volatile int
 extern float g_VRDiagBones[32 * 7]; // per bone: translation(3) + quaternion(4),
                                     // in buffer space
 
-extern volatile float
-    g_VRPlayerYaw; // player world yaw (degrees), pushed from Lua each frame
-extern volatile float g_VRCamI, g_VRCamJ, g_VRCamK,
-    g_VRCamR; // FPP camera (HMD) world quaternion
+extern volatile float g_VRPlayerYaw; // player world yaw (degrees), pushed from Lua each frame
+extern volatile float g_VRCamI, g_VRCamJ, g_VRCamK, g_VRCamR; // FPP camera (HMD) world quaternion
+extern volatile float g_VRYawCompensation; // multiplier for relative yaw
 
 // IK diagnostics (last solve, model space) -- surfaced via LogVRDiag.
 extern volatile float g_VRIKDbgTarget[3];
@@ -966,7 +965,23 @@ extern "C" inline void *Hooked_AnimPoseApply(void *a1, void *a2, void *a3,
 
           // HMD orientation relative to recenter base (producer slots 16..19).
           // Used to undo the HMD-local frame of the controller poses.
-          const float *hmdRel = g_pBodyWalkTracking->head.rot;
+          float baseHmdRel[4] = { g_pBodyWalkTracking->head.rot[0], g_pBodyWalkTracking->head.rot[1], g_pBodyWalkTracking->head.rot[2], g_pBodyWalkTracking->head.rot[3] };
+          
+          // Extract yaw angle (-relYaw) from baseHmdRel (which is a Y-axis quaternion)
+          // baseHmdRel[1] = sin(angle/2), baseHmdRel[3] = cos(angle/2)
+          float relYaw = -2.0f * std::atan2(baseHmdRel[1], baseHmdRel[3]);
+          
+          // Apply compensation coefficient
+          float compYaw = -relYaw * g_VRYawCompensation;
+          
+          // Re-build quaternion
+          float compHmdRel[4] = {
+              0.0f,
+              std::sin(compYaw * 0.5f),
+              0.0f,
+              std::cos(compYaw * 0.5f)
+          };
+          const float *hmdRel = compHmdRel;
           if (headModelPos) {
             // Body frame from FK bone positions -- convention-independent
             // (works regardless of the model's axis layout). bodyUp =
