@@ -1136,97 +1136,113 @@ static float g_ShootOriginX = 0, g_ShootOriginY = 0, g_ShootOriginZ = 0;
 static bool g_ShootOriginSet = false;
 
 // ---- Shoot() hook (RVA 0x659C5C) ----
+extern volatile int g_InsideShoot;
 typedef void (*Shoot_t)(void *rcx, void *rdx, void *r8, void *r9);
 static Shoot_t OriginalShoot = nullptr;
 
 extern "C" inline void Hooked_Shoot(void *rcx, void *rdx, void *r8, void *r9) {
   if (g_RaycastTestArmed > 0) {
-    Beep(1000, 50);
-    g_RaycastLogCount = 0;
-    g_ShootOriginSet = false; // reset auto-detect
+    __try {
+      float* startPoint = (float*)((uintptr_t)rdx + 0xF0);
+      float* startVelocity = (float*)((uintptr_t)rdx + 0x100);
+      float* targetPosition = (float*)((uintptr_t)rdx + 0x120);
 
+      // Just logging VR hand position to see if it's valid
+      // DO NOT OVERRIDE PARAMS YET TO PREVENT CRASH
+      float vrX = g_VRIKDbgTarget[0];
+      float vrY = g_VRIKDbgTarget[1];
+      float vrZ = g_VRIKDbgTarget[2];
+      
+      // Let's print this to log later!
+
+      FILE *f = fopen("raycast_hook_log.txt", "a");
+      if (f) {
+        fprintf(f, "\n=== SHOOT EVENT ===\n");
+        fprintf(f, "Original startPoint: (%.4f, %.4f, %.4f)\n", startPoint[0], startPoint[1], startPoint[2]);
+        fprintf(f, "Original startVelocity: (%.4f, %.4f, %.4f)\n", startVelocity[0], startVelocity[1], startVelocity[2]);
+        fprintf(f, "VR Hand: (%.4f, %.4f, %.4f)\n", g_VRIKDbgTarget[0], g_VRIKDbgTarget[1], g_VRIKDbgTarget[2]);
+          fprintf(f, "Original targetPosition: (%.4f, %.4f, %.4f)\n", targetPosition[0], targetPosition[1], targetPosition[2]);
+        fclose(f);
+      }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {}
+    Beep(1000, 50);
+  }
+  g_InsideShoot = 1;
+  OriginalShoot(rcx, rdx, r8, r9);
+  g_InsideShoot = 0;
+}
+
+typedef void (*Raycast_t)(void* rcx, void* rdx);
+Raycast_t OriginalRaycast = nullptr;
+
+extern "C" inline void Hooked_Raycast(void* rcx, void* rdx) {
+  if (g_InsideShoot && g_RaycastTestArmed > 0 && rdx) {
+    // OVERRIDE THE TRAJECTORY!
+    float* startPoint = (float*)((uintptr_t)rdx + 0x40);
+    startPoint[2] += g_RaycastShiftZ; // Shift bullet up/down!
+    
+    float* startVelocity = (float*)((uintptr_t)rdx + 0x60);
+    startVelocity[0] = 0.0f;
+    startVelocity[1] = 0.0f;
+    startVelocity[2] = 1000.0f;
+    startVelocity[3] = 0.0f;
+  }
+  OriginalRaycast(rcx, rdx);
+}
+
+typedef bool (*DispatchEvent_t)(void* rcx, void* rdx);
+DispatchEvent_t OriginalDispatchEvent = nullptr;
+
+extern "C" inline bool Hooked_DispatchEvent(void* rcx, void* rdx) {
+  if (g_InsideShoot && g_RaycastTestArmed > 0 && rdx) {
     FILE *f = fopen("raycast_hook_log.txt", "a");
     if (f) {
-      fprintf(f, "=== SHOOT! muzzle=(%.1f, %.1f, %.1f) ===\n", (float)g_MuzzleX,
-              (float)g_MuzzleY, (float)g_MuzzleZ);
-
-      // Dump rdx (shoot params) — compact
-      if (rdx) {
-        float *p = reinterpret_cast<float *>(rdx);
-        fprintf(f, "[rdx params]:\n");
-        for (int i = 0; i < 64; i++) {
-          if (p[i] != 0.0f && !std::isnan(p[i]) && !std::isinf(p[i])) {
-            float sq = p[i]*p[i] + p[i+1]*p[i+1] + p[i+2]*p[i+2];
-            bool isVec = (i < 61 && sq > 0.9f && sq < 1.1f);
-            fprintf(f, "  [%02d]+0x%03X = %.4f %s\n", i, i * 4, p[i], isVec ? "<-- NORMALIZED?" : "");
-          }
-        }
-      }
-      
-      // Dump r8
-      if (r8) {
-        float *p = reinterpret_cast<float *>(r8);
-        fprintf(f, "[r8 params]:\n");
-        __try {
-            for (int i = 0; i < 32; i++) {
-              if (p[i] != 0.0f && !std::isnan(p[i]) && !std::isinf(p[i])) {
-                float sq = p[i]*p[i] + p[i+1]*p[i+1] + p[i+2]*p[i+2];
-                bool isVec = (i < 29 && sq > 0.9f && sq < 1.1f);
-                fprintf(f, "  [%02d]+0x%03X = %.4f %s\n", i, i * 4, p[i], isVec ? "<-- NORMALIZED?" : "");
-              }
-            }
-        } __except(1) { fprintf(f, "  (Access Violation)\n"); }
-      }
-      
-      // Dump r9
-      if (r9) {
-        float *p = reinterpret_cast<float *>(r9);
-        fprintf(f, "[r9 params]:\n");
-        __try {
-            for (int i = 0; i < 32; i++) {
-              if (p[i] != 0.0f && !std::isnan(p[i]) && !std::isinf(p[i])) {
-                float sq = p[i]*p[i] + p[i+1]*p[i+1] + p[i+2]*p[i+2];
-                bool isVec = (i < 29 && sq > 0.9f && sq < 1.1f);
-                fprintf(f, "  [%02d]+0x%03X = %.4f %s\n", i, i * 4, p[i], isVec ? "<-- NORMALIZED?" : "");
-              }
-            }
-        } __except(1) { fprintf(f, "  (Access Violation)\n"); }
-      }
-      
-      // Dump stack (rsp+0x28 to rsp+0xA8)
-      fprintf(f, "[stack params]:\n");
-      // Note: In a hook, RSP is shifted. Since we push nothing before this (except what compiler pushes),
-      // we can just read relative to a local variable's address.
-      void* dummy = nullptr;
-      float* stack_ptr = (float*)((uintptr_t)&dummy + 0x20); // rough guess of caller stack
+      fprintf(f, "\n=== DISPATCH EVENT 0x9D69DC ===\n");
+      fprintf(f, "System rcx: %p, Event rdx: %p\n", rcx, rdx);
       __try {
-          for (int i = 0; i < 32; i++) {
-              if (stack_ptr[i] != 0.0f && !std::isnan(stack_ptr[i]) && !std::isinf(stack_ptr[i])) {
-                  float sq = stack_ptr[i]*stack_ptr[i] + stack_ptr[i+1]*stack_ptr[i+1] + stack_ptr[i+2]*stack_ptr[i+2];
-                  bool isVec = (i < 29 && sq > 0.9f && sq < 1.1f);
-                  fprintf(f, "  [%02d]+0x%03X = %.4f %s\n", i, i * 4, stack_ptr[i], isVec ? "<-- NORMALIZED?" : "");
-              }
-          }
-      } __except(1) { fprintf(f, "  (Access Violation)\n"); }
-      
-      fprintf(f, "\n");
+        uint8_t* ptr = (uint8_t*)rdx;
+        for(int i=0; i<32; i++) { // dump 512 bytes of event
+           fprintf(f, "0x%02X:  %02X %02X %02X %02X %02X %02X %02X %02X  %02X %02X %02X %02X %02X %02X %02X %02X\n",
+             i*16,
+             ptr[i*16+0], ptr[i*16+1], ptr[i*16+2], ptr[i*16+3], ptr[i*16+4], ptr[i*16+5], ptr[i*16+6], ptr[i*16+7],
+             ptr[i*16+8], ptr[i*16+9], ptr[i*16+10], ptr[i*16+11], ptr[i*16+12], ptr[i*16+13], ptr[i*16+14], ptr[i*16+15]);
+        }
+        
+        // Let's also print it as floats so it's easier to read!
+        float* fptr = (float*)rdx;
+        fprintf(f, "As Floats:\n");
+        for(int i=0; i<128; i++) {
+           if (fptr[i] != 0.0f && !std::isnan(fptr[i]) && !std::isinf(fptr[i])) {
+              fprintf(f, "  [%02d]+0x%03X = %.4f\n", i, i * 4, fptr[i]);
+           }
+        }
+      } __except(EXCEPTION_EXECUTE_HANDLER) {
+        fprintf(f, "Error reading eventObj memory\n");
+      }
       fclose(f);
     }
+
+
   }
-  OriginalShoot(rcx, rdx, r8, r9);
+  return OriginalDispatchEvent(rcx, rdx);
 }
 
 inline bool InstallShootHook() {
   HMODULE hMod = GetModuleHandleA("Cyberpunk2077.exe");
-  if (!hMod)
-    return false;
-  void *target =
-      reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(hMod) + 0x659C5C);
+  if (!hMod) return false;
+  uintptr_t exe_base = reinterpret_cast<uintptr_t>(hMod);
+
   MH_Initialize();
-  if (MH_CreateHook(target, (void *)&Hooked_Shoot,
-                    reinterpret_cast<void **>(&OriginalShoot)) != MH_OK)
-    return false;
-  if (MH_EnableHook(target) != MH_OK)
-    return false;
+  
+  void *targetShoot = (void *)(exe_base + 0x659C5C);
+  if (MH_CreateHook(targetShoot, (void *)&Hooked_Shoot, reinterpret_cast<void **>(&OriginalShoot)) != MH_OK) return false;
+  if (MH_EnableHook(targetShoot) != MH_OK) return false;
+
+  void *targetDispatch = (void *)(exe_base + 0x9D69DC);
+  if (MH_CreateHook(targetDispatch, (void *)&Hooked_DispatchEvent, reinterpret_cast<void **>(&OriginalDispatchEvent)) == MH_OK) MH_EnableHook(targetDispatch);
+
+  void *targetRaycast = (void *)(exe_base + 0x130989C);
+  if (MH_CreateHook(targetRaycast, (void *)&Hooked_Raycast, reinterpret_cast<void **>(&OriginalRaycast)) == MH_OK) MH_EnableHook(targetRaycast);
+
   return true;
 }

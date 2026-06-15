@@ -253,6 +253,37 @@ void EnsureSharedMemory() {
     }
 }
 
+struct CP2077StateData {
+    char activeCategory[64];
+};
+
+static HANDLE g_hStateMap = NULL;
+static CP2077StateData* g_pStateData = nullptr;
+
+void EnsureStateMemory() {
+    if (!g_pStateData) {
+        g_hStateMap = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(CP2077StateData), "Local\\BodyWalkVR_CP2077_State");
+        if (g_hStateMap) {
+            g_pStateData = (CP2077StateData*)MapViewOfFile(g_hStateMap, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(CP2077StateData));
+            if (g_pStateData) {
+                memset(g_pStateData, 0, sizeof(CP2077StateData));
+                strcpy_s(g_pStateData->activeCategory, "Main");
+            }
+        }
+    }
+}
+
+void SendCP2077StateToBodyWalk(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, void* aOut, int64_t a4) {
+    RED4ext::CString stateName;
+    RED4ext::GetParameter(aFrame, &stateName);
+    aFrame->code++; // skip ParamEnd
+    
+    EnsureStateMemory();
+    if (g_pStateData && stateName.c_str()) {
+        strncpy_s(g_pStateData->activeCategory, stateName.c_str(), sizeof(g_pStateData->activeCategory) - 1);
+    }
+}
+
 void GetLeftVRHandValid(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t a4) {
     aFrame->code++; EnsureSharedMemory();
     if (aOut) *aOut = g_pBodyWalkTracking ? (g_pBodyWalkTracking->leftHand.valid == 1) : false;
@@ -273,12 +304,13 @@ void GetLeftVRHandPos(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFra
     }
 }
 
+extern volatile float g_VRIKDbgTarget[3];
 void GetRightVRHandPos(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, RED4ext::Vector4* aOut, int64_t a4) {
     aFrame->code++; EnsureSharedMemory();
     if (aOut) {
-        if (g_pBodyWalkTracking) {
-            aOut->X = g_pBodyWalkTracking->rightHand.pos[0]; aOut->Y = g_pBodyWalkTracking->rightHand.pos[1]; aOut->Z = g_pBodyWalkTracking->rightHand.pos[2];
-        } else { aOut->X = aOut->Y = aOut->Z = 0.0f; }
+        aOut->X = g_VRIKDbgTarget[0]; 
+        aOut->Y = g_VRIKDbgTarget[1]; 
+        aOut->Z = g_VRIKDbgTarget[2];
         aOut->W = 1.0f;
     }
 }
@@ -292,12 +324,14 @@ void GetLeftVRHandRot(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFra
     }
 }
 
+extern volatile float g_VRWristR_I, g_VRWristR_J, g_VRWristR_K, g_VRWristR_R;
 void GetRightVRHandRot(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, RED4ext::Quaternion* aOut, int64_t a4) {
     aFrame->code++; EnsureSharedMemory();
     if (aOut) {
-        if (g_pBodyWalkTracking) {
-            aOut->i = g_pBodyWalkTracking->rightHand.rot[0]; aOut->j = g_pBodyWalkTracking->rightHand.rot[1]; aOut->k = g_pBodyWalkTracking->rightHand.rot[2]; aOut->r = g_pBodyWalkTracking->rightHand.rot[3];
-        } else { aOut->i = aOut->j = aOut->k = 0.0f; aOut->r = 1.0f; }
+        aOut->i = g_VRWristR_I; 
+        aOut->j = g_VRWristR_J; 
+        aOut->k = g_VRWristR_K; 
+        aOut->r = g_VRWristR_R;
     }
 }
 
@@ -3563,8 +3597,40 @@ typedef void (*ScriptingFunction_t)(RED4ext::IScriptable* aContext, RED4ext::CSt
 ScriptingFunction_t Original_GetDefaultCrosshairData = nullptr;
 
 void Hooked_GetDefaultCrosshairData(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, void* aOut, int64_t a4) {
+    if (g_RaycastTestArmed > 0) {
+        RED4ext::WeakHandle<RED4ext::IScriptable> instigator;
+        RED4ext::ScriptRef<RED4ext::Vector4> crosshairPosition;
+        RED4ext::ScriptRef<RED4ext::Vector4> crosshairForward;
+
+        RED4ext::GetParameter(aFrame, &instigator);
+        RED4ext::GetParameter(aFrame, &crosshairPosition);
+        RED4ext::GetParameter(aFrame, &crosshairForward);
+        aFrame->code++;
+
+        if (crosshairPosition.ref) {
+            crosshairPosition.ref->X = g_MuzzleX;
+            crosshairPosition.ref->Y = g_MuzzleY;
+            crosshairPosition.ref->Z = g_MuzzleZ;
+            crosshairPosition.ref->W = 1.0f;
+        }
+
+        if (crosshairForward.ref) {
+            // Тестовый выстрел ровно вверх в небо (Z=1.0)
+            crosshairForward.ref->X = 0.0f;
+            crosshairForward.ref->Y = 0.0f;
+            crosshairForward.ref->Z = 1.0f;
+            crosshairForward.ref->W = 0.0f;
+        }
+
+        FILE* f = fopen("raycast_hook_log.txt", "a");
+        if (f) {
+            fprintf(f, "OVERRODE CROSSHAIR: pos=(%f, %f, %f) fwd=(0, 0, 1)\n", g_MuzzleX, g_MuzzleY, g_MuzzleZ);
+            fclose(f);
+        }
+        return; // Пропускаем оригинальную функцию!
+    }
+
     Original_GetDefaultCrosshairData(aContext, aFrame, aOut, a4);
-    Beep(750, 100);
 }
 
 bool InstallCrosshairHook() {
@@ -4583,6 +4649,11 @@ RED4EXT_C_EXPORT void RED4EXT_CALL PostRegisterTypes() {
     f58->AddParam("Int32", "mode");
     f58->AddParam("Int32", "arrayMode");
     rtti->RegisterFunction(f58);
+
+    auto fState = RED4ext::CGlobalFunction::Create("SendCP2077StateToBodyWalk", "SendCP2077StateToBodyWalk", &SendCP2077StateToBodyWalk);
+    fState->flags = flags;
+    fState->AddParam("String", "stateName");
+    rtti->RegisterFunction(fState);
 }
 
 RED4EXT_C_EXPORT void RED4EXT_CALL RegisterTypes() {}

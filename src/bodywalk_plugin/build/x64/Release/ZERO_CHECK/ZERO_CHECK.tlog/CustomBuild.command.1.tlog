@@ -1,0 +1,10 @@
+^C:\WSL\CP2077\BODYWALK-CYBERPUNK-VR\SRC\BODYWALK_PLUGIN\BUILD\CMAKEFILES\494A4B781A5B6FB71861DA7177A6A8D9\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -SC:/wsl/cp2077/bodywalk-cyberpunk-vr/src/bodywalk_plugin -BC:/wsl/cp2077/bodywalk-cyberpunk-vr/src/bodywalk_plugin/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/wsl/cp2077/bodywalk-cyberpunk-vr/src/bodywalk_plugin/build/cp2077_bridge.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

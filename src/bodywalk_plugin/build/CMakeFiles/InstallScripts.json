@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/wsl/cp2077/bodywalk-cyberpunk-vr/src/bodywalk_plugin/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
