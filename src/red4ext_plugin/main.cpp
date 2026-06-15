@@ -157,6 +157,10 @@ volatile int       g_VRRightUpperArmIdx = -1; // RightArm  (upper-arm start / sh
 volatile int       g_VRRightForeArmIdx  = -1; // RightForeArm (elbow)
 volatile int       g_VRLeftUpperArmIdx  = -1; // LeftArm
 volatile int       g_VRLeftForeArmIdx   = -1; // LeftForeArm
+volatile int       g_VRRightShoulderIdx = -1; // RightShoulder (clavicle)
+volatile int       g_VRLeftShoulderIdx  = -1; // LeftShoulder (clavicle)
+
+volatile float     g_VRIKShoulderWidthScale = 2.0f;
 
 // IK diagnostics (last solve, model space).
 volatile float     g_VRIKDbgTarget[3]   = {0,0,0};
@@ -3721,6 +3725,7 @@ static int VRIK_DoArmPlayer() {
         {
             int head = -1, rightHand = -1, leftHand = -1;
             int rightArm = -1, rightFore = -1, leftArm = -1, leftFore = -1;
+            int rightShoulder = -1, leftShoulder = -1;
             const size_t kNoMatch = static_cast<size_t>(-1);
             size_t headLen = kNoMatch, rightLen = kNoMatch, leftLen = kNoMatch;
             for (uint32_t i = 0; i < boneCount; ++i)
@@ -3751,6 +3756,8 @@ static int VRIK_DoArmPlayer() {
                 if (EqualsInsensitive(nm, "RightForeArm")) rightFore = static_cast<int>(i);
                 if (EqualsInsensitive(nm, "LeftArm"))      leftArm   = static_cast<int>(i);
                 if (EqualsInsensitive(nm, "LeftForeArm"))  leftFore  = static_cast<int>(i);
+                if (EqualsInsensitive(nm, "RightShoulder")) rightShoulder = static_cast<int>(i);
+                if (EqualsInsensitive(nm, "LeftShoulder"))  leftShoulder  = static_cast<int>(i);
             }
 
             if (head >= 0)      g_VRHeadBoneIdx  = head;
@@ -3760,6 +3767,8 @@ static int VRIK_DoArmPlayer() {
             if (rightFore >= 0) g_VRRightForeArmIdx  = rightFore;
             if (leftArm >= 0)   g_VRLeftUpperArmIdx  = leftArm;
             if (leftFore >= 0)  g_VRLeftForeArmIdx   = leftFore;
+            if (rightShoulder >= 0) g_VRRightShoulderIdx = rightShoulder;
+            if (leftShoulder >= 0)  g_VRLeftShoulderIdx  = leftShoulder;
 
             // Copy the parent-index table so the pose hook can run FK each frame.
             const uint32_t pc = metaRig->parentIndeces.Size();
@@ -4001,11 +4010,20 @@ void SetVRHeadBone(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame,
 // Toggle head-relative hand composition (1 = on, 0 = write head-local offset directly).
 void SetVRUseHeadRelative(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t a4) {
     RED4EXT_UNUSED_PARAMETER(aContext); RED4EXT_UNUSED_PARAMETER(a4);
-    int32_t on = 1;
-    RED4ext::GetParameter(aFrame, &on);
+    int32_t use = 1;
+    RED4ext::GetParameter(aFrame, &use);
     aFrame->code++;
-    g_VRUseHeadRelative = on ? 1 : 0;
+    g_VRUseHeadRelative = use;
     if (aOut) *aOut = g_VRUseHeadRelative;
+}
+
+void SetVRShoulderWidth(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t a4) {
+    RED4EXT_UNUSED_PARAMETER(aContext); RED4EXT_UNUSED_PARAMETER(a4);
+    float scale = 1.0f;
+    RED4ext::GetParameter(aFrame, &scale);
+    aFrame->code++;
+    g_VRIKShoulderWidthScale = scale;
+    if (aOut) *aOut = 1;
 }
 
 void SetVRDiagCapture(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t a4) {
@@ -4434,7 +4452,10 @@ RED4EXT_C_EXPORT void RED4EXT_CALL PostRegisterTypes() {
     f15rH->flags = flags; f15rH->SetReturnType("Int32"); f15rH->AddParam("Int32", "index"); rtti->RegisterFunction(f15rH);
 
     auto f15rR = RED4ext::CGlobalFunction::Create("SetVRUseHeadRelative", "SetVRUseHeadRelative", &SetVRUseHeadRelative);
-    f15rR->flags = flags; f15rR->SetReturnType("Int32"); f15rR->AddParam("Int32", "on"); rtti->RegisterFunction(f15rR);
+    f15rR->flags = flags; f15rR->AddParam("Int32", "use"); rtti->RegisterFunction(f15rR);
+
+    auto f15rW = RED4ext::CGlobalFunction::Create("SetVRShoulderWidth", "SetVRShoulderWidth", &SetVRShoulderWidth);
+    f15rW->flags = flags; f15rW->AddParam("Float", "scale"); rtti->RegisterFunction(f15rW);
 
     auto f15rC = RED4ext::CGlobalFunction::Create("SetVRDiagCapture", "SetVRDiagCapture", &SetVRDiagCapture);
     f15rC->flags = flags; f15rC->SetReturnType("Int32"); f15rC->AddParam("Int32", "on"); rtti->RegisterFunction(f15rC);

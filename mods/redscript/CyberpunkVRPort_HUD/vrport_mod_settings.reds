@@ -6,6 +6,7 @@ public native func SetVRHandOffset(pitch: Float, yaw: Float, roll: Float, hand: 
 public native func InstallVRAnimPoseHook() -> Int32;
 public native func ArmVRAnimPosePlayer() -> Int32;
 public native func SetVRBindMode(mode: Int32) -> Int32;
+public native func SetVRShoulderWidth(scale: Float) -> Int32;
 
 public class CyberpunkUniversalHandsVRSettings extends IScriptable {
 
@@ -14,6 +15,15 @@ public class CyberpunkUniversalHandsVRSettings extends IScriptable {
   @runtimeProperty("ModSettings.category.order", "1")
   @runtimeProperty("ModSettings.displayName", "Enable Universal Hands")
   let enabled: Bool = false;
+
+  @runtimeProperty("ModSettings.mod", "Cyberpunk Universal Hands VR")
+  @runtimeProperty("ModSettings.category", "Body Tuning")
+  @runtimeProperty("ModSettings.category.order", "50")
+  @runtimeProperty("ModSettings.displayName", "Shoulder Width Scale")
+  @runtimeProperty("ModSettings.step", "0.01")
+  @runtimeProperty("ModSettings.min", "1.0")
+  @runtimeProperty("ModSettings.max", "3.0")
+  let shoulderWidth: Float = 2.0;
 
   @runtimeProperty("ModSettings.mod", "Cyberpunk Universal Hands VR")
   @runtimeProperty("ModSettings.category", "Right Hand Calibration")
@@ -195,6 +205,8 @@ public class CyberpunkUniversalHandsVRSettings extends IScriptable {
 
     SetVRHandOffset(this.pitchL, this.yawL, this.rollL, 1);
     SetVRHandOffset(this.pitchR, this.yawR, this.rollR, 0);
+
+    SetVRShoulderWidth(this.shoulderWidth);
 
     if this.enabled {
       InstallVRAnimPoseHook();

@@ -30,15 +30,36 @@ struct UniversalTrackingData {
 
 extern RED4ext::Vector4 g_CameraWorldPos;
 extern int g_CalibrationBoneIndex;
-extern void *g_PlayerAnimComponent;
+extern void* g_PlayerAnimComponent;
 extern volatile uint64_t g_hookTotalCalls;
 extern volatile uint64_t g_hookMatchCalls;
 extern volatile uint64_t g_hookBoneWrites;
 extern volatile int g_hookCapture;
 extern volatile uint64_t g_hookSkeletalCalls;
+extern volatile int g_capturedCount;
 extern volatile uint32_t g_capturedRcx[32];
 extern volatile uint64_t g_capturedFull[32];
-extern volatile int g_capturedCount;
+
+// VR bone variables
+extern int16_t g_VRBoneParent[256];
+extern volatile int g_VRBoneCount;
+extern volatile int g_VRRightUpperArmIdx;
+extern volatile int g_VRRightForeArmIdx;
+extern volatile int g_VRLeftUpperArmIdx;
+extern volatile int g_VRLeftForeArmIdx;
+extern volatile int g_VRRightShoulderIdx;
+extern volatile int g_VRLeftShoulderIdx;
+extern volatile int g_VRBind;
+extern volatile float g_VRIKShoulderWidthScale;
+
+// Shoulder rigid lock state
+static bool g_VRIKShoulderCaptured = false;
+static float g_VRIKShoulderOffsetR[3] = {0};
+static float g_VRIKShoulderOffsetL[3] = {0};
+static float g_VRIKShoulderRotR[4] = {0,0,0,1};
+static float g_VRIKShoulderRotL[4] = {0,0,0,1};
+static float g_VRIKShoulderClavOffsetR[3] = {0};
+static float g_VRIKShoulderClavOffsetL[3] = {0};
 
 typedef void *(*ComponentFunc_t)(void *rcx, void *rdx, void *r8, void *r9);
 static ComponentFunc_t OriginalFunc21 = nullptr;
@@ -216,16 +237,6 @@ extern volatile float
     g_VRPlayerYaw; // player world yaw (degrees), pushed from Lua each frame
 extern volatile float g_VRCamI, g_VRCamJ, g_VRCamK,
     g_VRCamR; // FPP camera (HMD) world quaternion
-
-// Full-arm IK (g_VRBind == 4): hierarchy + chain indices resolved in
-// VRIK_DoArmPlayer.
-extern int16_t g_VRBoneParent[256]; // metaRig parent index per bone
-extern volatile int g_VRBoneCount;  // bone count (0 = not resolved)
-extern volatile int
-    g_VRRightUpperArmIdx; // RightArm  (shoulder joint / upper-arm start)
-extern volatile int g_VRRightForeArmIdx; // RightForeArm (elbow)
-extern volatile int g_VRLeftUpperArmIdx; // LeftArm
-extern volatile int g_VRLeftForeArmIdx;  // LeftForeArm
 
 // IK diagnostics (last solve, model space) -- surfaced via LogVRDiag.
 extern volatile float g_VRIKDbgTarget[3];
@@ -834,8 +845,10 @@ extern "C" inline void *Hooked_AnimPoseApply(void *a1, void *a2, void *a3,
 
   if (!(g_PlayerTrackBufA || g_PlayerTrackBufB))
     return result;
-  if (g_VRBind <= 0 && g_AnimPoseDebug == 0 && g_VRDiagCapture == 0)
+  if (g_VRBind <= 0 && g_AnimPoseDebug == 0 && g_VRDiagCapture == 0) {
+    g_VRIKShoulderCaptured = false; // Reset capture when exiting VR pose mode
     return result;
+  }
 
   __try {
     void *poseDesc = reinterpret_cast<void **>(a2)[7];
@@ -894,10 +907,63 @@ extern "C" inline void *Hooked_AnimPoseApply(void *a1, void *a2, void *a3,
         // controller offset is taken straight from the proven gizmo world math.
         if (g_VRBind == 4 && g_pBodyWalkTracking && g_VRBoneCount > 0 &&
             g_VRHeadBoneIdx >= 0) {
+            
+          // --- Shoulder Freeze and Scale ---
+          if (g_VRRightShoulderIdx >= 0 && g_VRLeftShoulderIdx >= 0) {
+              float* rotR = reinterpret_cast<float*>(boneBuf + g_VRRightShoulderIdx * 48 + VRIK_ROT_OFF);
+              float* rotL = reinterpret_cast<float*>(boneBuf + g_VRLeftShoulderIdx * 48 + VRIK_ROT_OFF);
+              
+              if (!g_VRIKShoulderCaptured) {
+                  g_VRIKShoulderRotR[0] = rotR[0]; g_VRIKShoulderRotR[1] = rotR[1]; g_VRIKShoulderRotR[2] = rotR[2]; g_VRIKShoulderRotR[3] = rotR[3];
+                  g_VRIKShoulderRotL[0] = rotL[0]; g_VRIKShoulderRotL[1] = rotL[1]; g_VRIKShoulderRotL[2] = rotL[2]; g_VRIKShoulderRotL[3] = rotL[3];
+                  
+                  if (g_VRRightUpperArmIdx >= 0 && g_VRLeftUpperArmIdx >= 0) {
+                      float* tR = reinterpret_cast<float*>(boneBuf + g_VRRightUpperArmIdx * 48 + VRIK_TRANS_OFF);
+                      float* tL = reinterpret_cast<float*>(boneBuf + g_VRLeftUpperArmIdx * 48 + VRIK_TRANS_OFF);
+                      g_VRIKShoulderOffsetR[0] = tR[0]; g_VRIKShoulderOffsetR[1] = tR[1]; g_VRIKShoulderOffsetR[2] = tR[2];
+                      g_VRIKShoulderOffsetL[0] = tL[0]; g_VRIKShoulderOffsetL[1] = tL[1]; g_VRIKShoulderOffsetL[2] = tL[2];
+                  }
+                  
+                  // Capture initial translation of the clavicles (Shoulders)
+                  float* tClavR = reinterpret_cast<float*>(boneBuf + g_VRRightShoulderIdx * 48 + VRIK_TRANS_OFF);
+                  float* tClavL = reinterpret_cast<float*>(boneBuf + g_VRLeftShoulderIdx * 48 + VRIK_TRANS_OFF);
+                  g_VRIKShoulderClavOffsetR[0] = tClavR[0]; g_VRIKShoulderClavOffsetR[1] = tClavR[1]; g_VRIKShoulderClavOffsetR[2] = tClavR[2];
+                  g_VRIKShoulderClavOffsetL[0] = tClavL[0]; g_VRIKShoulderClavOffsetL[1] = tClavL[1]; g_VRIKShoulderClavOffsetL[2] = tClavL[2];
+
+                  g_VRIKShoulderCaptured = true;
+              }
+
+              // 1. Freeze local rotation to kill breathing/idle animations on the shoulders
+              rotR[0] = g_VRIKShoulderRotR[0]; rotR[1] = g_VRIKShoulderRotR[1]; rotR[2] = g_VRIKShoulderRotR[2]; rotR[3] = g_VRIKShoulderRotR[3];
+              rotL[0] = g_VRIKShoulderRotL[0]; rotL[1] = g_VRIKShoulderRotL[1]; rotL[2] = g_VRIKShoulderRotL[2]; rotL[3] = g_VRIKShoulderRotL[3];
+
+              // 2. Freeze local translation of the clavicles to lock them to the center of the body (Spine)
+              float* tClavR = reinterpret_cast<float*>(boneBuf + g_VRRightShoulderIdx * 48 + VRIK_TRANS_OFF);
+              float* tClavL = reinterpret_cast<float*>(boneBuf + g_VRLeftShoulderIdx * 48 + VRIK_TRANS_OFF);
+              tClavR[0] = g_VRIKShoulderClavOffsetR[0]; tClavR[1] = g_VRIKShoulderClavOffsetR[1]; tClavR[2] = g_VRIKShoulderClavOffsetR[2];
+              tClavL[0] = g_VRIKShoulderClavOffsetL[0]; tClavL[1] = g_VRIKShoulderClavOffsetL[1]; tClavL[2] = g_VRIKShoulderClavOffsetL[2];
+
+              // 2. Widen shoulders by scaling the local translation vector of the Upper Arms!
+              // This pushes the arm joints further away from the clavicle origin.
+              if (g_VRRightUpperArmIdx >= 0 && g_VRLeftUpperArmIdx >= 0) {
+                  float* tR = reinterpret_cast<float*>(boneBuf + g_VRRightUpperArmIdx * 48 + VRIK_TRANS_OFF);
+                  float* tL = reinterpret_cast<float*>(boneBuf + g_VRLeftUpperArmIdx * 48 + VRIK_TRANS_OFF);
+                  
+                  tR[0] = g_VRIKShoulderOffsetR[0] * g_VRIKShoulderWidthScale;
+                  tR[1] = g_VRIKShoulderOffsetR[1] * g_VRIKShoulderWidthScale;
+                  tR[2] = g_VRIKShoulderOffsetR[2] * g_VRIKShoulderWidthScale;
+
+                  tL[0] = g_VRIKShoulderOffsetL[0] * g_VRIKShoulderWidthScale;
+                  tL[1] = g_VRIKShoulderOffsetL[1] * g_VRIKShoulderWidthScale;
+                  tL[2] = g_VRIKShoulderOffsetL[2] * g_VRIKShoulderWidthScale;
+              }
+          }
+
           VRIK_ComputeFK(boneBuf, g_VRBoneCount);
           int hIdx = g_VRHeadBoneIdx;
           const float *headModelPos =
               (hIdx >= 0 && hIdx < VRIK_MAX_BONES) ? g_fkPos[hIdx] : nullptr;
+
           // HMD orientation relative to recenter base (producer slots 16..19).
           // Used to undo the HMD-local frame of the controller poses.
           const float *hmdRel = g_pBodyWalkTracking->head.rot;
