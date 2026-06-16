@@ -288,6 +288,72 @@ void SendCP2077StateToBodyWalk(RED4ext::IScriptable* aContext, RED4ext::CStackFr
     }
 }
 
+struct CP2077ActionData {
+    uint64_t actionFlags;
+};
+
+static HANDLE g_hActionMap = NULL;
+static CP2077ActionData* g_pActionData = nullptr;
+static uint64_t g_lastActionFlags = 0;
+static uint64_t g_currentActionFlags = 0;
+
+void EnsureActionMemory() {
+    if (!g_pActionData) {
+        g_hActionMap = OpenFileMappingA(FILE_MAP_READ, FALSE, "Local\\BodyWalkVR_CP2077_ActionData");
+        if (g_hActionMap) {
+            g_pActionData = (CP2077ActionData*)MapViewOfFile(g_hActionMap, FILE_MAP_READ, 0, 0, sizeof(CP2077ActionData));
+        }
+    }
+}
+
+void GetVRActionState(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t a4) {
+    int32_t actionId;
+    RED4ext::GetParameter(aFrame, &actionId);
+    aFrame->code++; 
+    
+    EnsureActionMemory();
+    
+    if (aOut) {
+        if (g_pActionData && actionId >= 0 && actionId < 64) {
+            *aOut = (g_pActionData->actionFlags & (1ULL << actionId)) != 0;
+        } else {
+            *aOut = false;
+        }
+    }
+}
+
+void GetVRActionJustPressed(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t a4) {
+    int32_t actionId;
+    RED4ext::GetParameter(aFrame, &actionId);
+    aFrame->code++; 
+    
+    if (aOut) {
+        if (actionId >= 0 && actionId < 64) {
+            bool wasPressed = (g_lastActionFlags & (1ULL << actionId)) != 0;
+            bool isPressed = (g_currentActionFlags & (1ULL << actionId)) != 0;
+            *aOut = !wasPressed && isPressed;
+        } else {
+            *aOut = false;
+        }
+    }
+}
+
+void GetVRActionJustReleased(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t a4) {
+    int32_t actionId;
+    RED4ext::GetParameter(aFrame, &actionId);
+    aFrame->code++; 
+    
+    if (aOut) {
+        if (actionId >= 0 && actionId < 64) {
+            bool wasPressed = (g_lastActionFlags & (1ULL << actionId)) != 0;
+            bool isPressed = (g_currentActionFlags & (1ULL << actionId)) != 0;
+            *aOut = wasPressed && !isPressed;
+        } else {
+            *aOut = false;
+        }
+    }
+}
+
 void GetLeftVRHandValid(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t a4) {
     aFrame->code++; EnsureSharedMemory();
     if (aOut) *aOut = g_pBodyWalkTracking ? (g_pBodyWalkTracking->leftHand.valid == 1) : false;
@@ -2306,6 +2372,12 @@ void UpdateVRIKAnimInputs(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* 
 
     // Ensure the shared-memory mapping is alive each frame.
     EnsureSharedMemory();
+    EnsureActionMemory();
+    
+    if (g_pActionData) {
+        g_lastActionFlags = g_currentActionFlags;
+        g_currentActionFlags = g_pActionData->actionFlags;
+    }
 
     if (g_rootGraphFloatPersistentPreset != 0)
     {
@@ -4691,6 +4763,21 @@ RED4EXT_C_EXPORT void RED4EXT_CALL PostRegisterTypes() {
     fYawComp->flags = flags; fYawComp->SetReturnType("Int32");
     fYawComp->AddParam("Float", "comp");
     rtti->RegisterFunction(fYawComp);
+
+    auto fAction = RED4ext::CGlobalFunction::Create("GetVRActionState", "GetVRActionState", &GetVRActionState);
+    fAction->flags = flags; fAction->SetReturnType("Bool");
+    fAction->AddParam("Int32", "actionId");
+    rtti->RegisterFunction(fAction);
+
+    auto fActionPress = RED4ext::CGlobalFunction::Create("GetVRActionJustPressed", "GetVRActionJustPressed", &GetVRActionJustPressed);
+    fActionPress->flags = flags; fActionPress->SetReturnType("Bool");
+    fActionPress->AddParam("Int32", "actionId");
+    rtti->RegisterFunction(fActionPress);
+
+    auto fActionRel = RED4ext::CGlobalFunction::Create("GetVRActionJustReleased", "GetVRActionJustReleased", &GetVRActionJustReleased);
+    fActionRel->flags = flags; fActionRel->SetReturnType("Bool");
+    fActionRel->AddParam("Int32", "actionId");
+    rtti->RegisterFunction(fActionRel);
 }
 
 RED4EXT_C_EXPORT void RED4EXT_CALL RegisterTypes() {}
